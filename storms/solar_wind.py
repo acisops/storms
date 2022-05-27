@@ -117,7 +117,7 @@ class SolarWind:
 
     def plot_proton_spectra(self, times):
         spectrum_colors = ["tab:purple", "tab:brown", "tab:pink", 
-                           "tab:gray", "tab:olive", "tab:cyan"]
+                           "tab:gray", "tab:olive", "tab:cyan", "lime"]
         times = CxoTime(times)
         e = 0.5*self.p_ebins.sum(axis=1)
         fig, (ax1, ax2) = plt.subplots(figsize=(20,10), ncols=2)
@@ -139,7 +139,7 @@ class SolarWind:
         plot = DummyDatePlot(fig, ax2)
         dp = self._plot_protons(plot=plot)
         for i, time in enumerate(times):
-            dp.add_vline(time, color=spectrum_colors[i], ls='--')
+            dp.add_vline(time, color=spectrum_colors[i], ls='--', lw=5)
         dt = TimeDelta(1.0*u.d)
         dp.set_xlim(CxoTime(times[0]) - 0.1*dt,
                     CxoTime(times[-1]) + 0.1*dt)
@@ -169,7 +169,9 @@ class SolarWind:
     def scatter_plots(self):
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 10), ncols=2)
         ax1.scatter(self["p3"], self["hrc_shield"])
+        ax1.set_title("GOES HRC Proxy vs. ACE P3", fontsize=18)
         ax2.scatter(self["p3"], self["de1"])
+        ax2.set_title("ACE DE1 vs. ACE P3", fontsize=18)
         for ax in [ax1, ax2]:
             ax.set_xlabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
                           fontsize=18)
