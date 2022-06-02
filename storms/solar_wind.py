@@ -81,7 +81,10 @@ class SolarWind:
         return self.table[item]
 
     def plot_electrons(self):
-        dp = CustomDatePlot(self.times, self["de1"], label="DE1")
+        return self._plot_electrons()
+
+    def _plot_electrons(self, plot=None):
+        dp = CustomDatePlot(self.times, self["de1"], label="DE1", plot=plot)
         CustomDatePlot(self.times, self["de4"], plot=dp, label="DE4")
         dp.set_yscale("log")
         dp.set_ylabel("Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
@@ -152,7 +155,10 @@ class SolarWind:
         return fig
 
     def plot_hrc(self):
-        dp = CustomDatePlot(self.times, self["hrc_shield"], label="GOES proxy")
+        return self._plot_hrc()
+
+    def _plot_hrc(self, plot=None):
+        dp = CustomDatePlot(self.times, self["hrc_shield"], label="GOES proxy", plot=plot)
         CustomDatePlot(self.times, self["2shldart"], plot=dp, label="HRC Shield Rate")
         dp.set_yscale("log")
         dp.set_ylabel("Counts")
@@ -165,6 +171,33 @@ class SolarWind:
                                transform=dp.ax.get_xaxis_transform(),
                                color="mediumpurple", alpha=0.333333)
         return dp
+
+    def plot_all(self):
+        dp1 = self._plot_protons()
+        dp1.set_ylabel("ACE Proton Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+        dp1.set_ylim(8, None)
+        dp1.ax.tick_params(axis='x', direction='inout', which='major', bottom=True, top=True,
+                           length=8, labeltop=True, labelbottom=False, labelsize=18)
+        dp1.ax.tick_params(axis='x', direction='inout', which='minor', bottom=True, top=True,
+                           length=4)
+        dp1.ax.xaxis.set_label_position("top")
+        for label in dp1.ax.get_xticklabels():
+            label.set_rotation(-30)
+            label.set_ha('right')
+        dp2 = self._plot_electrons()
+        dp2.set_ylabel("ACE Electron Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+        dp2.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
+        dp2.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
+        dp2.set_ylim(8, None)
+        dp2.ax.set_xlabel("")
+        dp2.ax.set_xticklabels([])
+        dp3 = self._plot_hrc()
+        dp3.set_ylabel("HRC Shield Rate & Proxy (Counts)")
+        dp3.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
+        dp3.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
+        for dp in [dp1, dp2, dp3]:
+            dp.fig.tight_layout()
+        return dp1, dp2, dp3
 
     def scatter_plots(self):
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 10), ncols=2)
@@ -182,6 +215,6 @@ class SolarWind:
             for axis in ['top', 'bottom', 'left', 'right']:
                 ax.spines[axis].set_linewidth(2)
         ax1.set_ylabel("GOES Proxy (counts)", fontsize=18)
-        ax2.set_ylabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
+        ax2.set_ylabel("ACE DE1 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
                        fontsize=18)
         return fig

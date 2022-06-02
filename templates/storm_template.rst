@@ -15,18 +15,12 @@ Basic Facts
 Plots
 =====
 
-ACE Protons vs. Time
-++++++++++++++++++++
+Radiation vs. Time
+++++++++++++++++++
 
 .. image:: protons_vs_time.png
 
-ACE Electrons vs. Time
-++++++++++++++++++++++
-
 .. image:: electrons_vs_time.png
-
-HRC Shield Rate and Proxy vs. Time
-++++++++++++++++++++++++++++++++++
 
 .. image:: hrc_vs_time.png
 
