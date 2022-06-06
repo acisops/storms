@@ -7,10 +7,12 @@ Welcome to storms's documentation!
 ==================================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
 
-
+   shutdown
+   not_shutdown
+   all
 
 Indices and tables
 ==================

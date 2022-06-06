@@ -19,7 +19,7 @@ html_theme = 'bootstrap'
 html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
 
 html_theme_options = dict(
-    bootswatch_theme="simplex",
+    bootswatch_theme="spacelab",
     navbar_sidebarrel=False,
     globaltoc_depth=2,
     body_max_width="none",
@@ -28,7 +28,7 @@ html_theme_options = dict(
 
 # -- Project information -----------------------------------------------------
 
-project = 'storms'
+project = 'ACIS Storm Analysis'
 copyright = '2022, John ZuHone'
 author = 'John ZuHone'
 

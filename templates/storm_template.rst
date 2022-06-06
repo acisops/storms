@@ -1,5 +1,7 @@
-Storm: {{storm_date}}
----------------------
+.. _{{storm_date.replace(':', '-')}}:
+
+{{storm_date}}
+--------------
 
 Basic Facts
 ===========
@@ -18,11 +20,7 @@ Plots
 Radiation vs. Time
 ++++++++++++++++++
 
-.. image:: protons_vs_time.png
-
-.. image:: electrons_vs_time.png
-
-.. image:: hrc_vs_time.png
+.. image:: rad_vs_time.png
 
 Proton Spectra at Selected Times
 ++++++++++++++++++++++++++++++++

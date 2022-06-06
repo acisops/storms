@@ -69,13 +69,11 @@ class SolarWind:
             proxy = np.interp(self.times.secs, t, d["hrc_shield"])
         self.table["hrc_shield"] = proxy
         self.table["hrc_shield"][self.table["hrc_shield"] < 0.1] = np.nan
-        msid = fetch.MSID("2shldart", self.start, self.stop)
-        if len(msid.times) == 0:
-            shield1 = np.zeros(self.times.size)
-        else:
-            msid.interpolate(times=self.times.secs)
-            shield1 = msid.vals/256
-        self.table["2shldart"] = shield1
+        if self.start.secs < CxoTime("2020:237:03:45:19").secs:
+            msid = fetch.MSID("2shldart", self.start, self.stop)
+            if msid.times.size != 0:
+                shield1 = np.interp(self.times.secs, msid.times, msid.vals/256)
+                self.table["2shldart"] = shield1
 
     def __getitem__(self, item):
         return self.table[item]
@@ -86,9 +84,11 @@ class SolarWind:
     def _plot_electrons(self, plot=None):
         dp = CustomDatePlot(self.times, self["de1"], label="DE1", plot=plot)
         CustomDatePlot(self.times, self["de4"], plot=dp, label="DE4")
+        de_all = np.concatenate([self[f"de{i}"] for i in [1, 4]])
         dp.set_yscale("log")
         dp.set_ylabel("Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
         dp.set_legend(loc='upper left', fontsize=14)
+        dp.set_ylim(0.5*de_all.min(), 1.5*de_all.max())
         t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
         tplot = CxoTime(t).plot_date
         for radzone in self.rad_zones:
@@ -106,9 +106,11 @@ class SolarWind:
         CustomDatePlot(self.times, self["p3"], plot=dp, label="P3")
         CustomDatePlot(self.times, self["p5"], plot=dp, label="P5")
         CustomDatePlot(self.times, self["p7"], plot=dp, label="P7")
+        p_all = np.concatenate([self[f"p{i}"] for i in [1, 3, 5, 7]])
         dp.set_yscale("log")
         dp.set_ylabel("Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
         dp.set_legend(loc='upper left', fontsize=14)
+        dp.set_ylim(0.5*p_all.min(), 1.5*p_all.max())
         t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
         tplot = CxoTime(t).plot_date
         for radzone in self.rad_zones:
@@ -159,10 +161,14 @@ class SolarWind:
 
     def _plot_hrc(self, plot=None):
         dp = CustomDatePlot(self.times, self["hrc_shield"], label="GOES proxy", plot=plot)
-        CustomDatePlot(self.times, self["2shldart"], plot=dp, label="HRC Shield Rate")
+        h_all = self["hrc_shield"]
+        if "2shldart" in self.table.colnames:
+            CustomDatePlot(self.times, self["2shldart"], plot=dp, label="HRC Shield Rate")
+            h_all = np.concatenate([h_all, self["2shldart"]])
         dp.set_yscale("log")
         dp.set_ylabel("Counts")
         dp.set_legend(loc='upper left', fontsize=14)
+        dp.set_ylim(0.5*np.nanmin(h_all), 1.5*np.nanmax(h_all))
         t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
         tplot = CxoTime(t).plot_date
         for radzone in self.rad_zones:
@@ -173,34 +179,31 @@ class SolarWind:
         return dp
 
     def plot_all(self):
-        dp1 = self._plot_protons()
-        dp1.set_ylabel("ACE Proton Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
-        dp1.set_ylim(8, None)
+        fig, (ax1, ax2, ax3) = plt.subplots(figsize=(10,15), nrows=3)
+        plot1 = DummyDatePlot(fig, ax1)
+        dp1 = self._plot_protons(plot=plot1)
+        dp1.set_ylabel("ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)", fontsize=16)
         dp1.ax.tick_params(axis='x', direction='inout', which='major', bottom=True, top=True,
                            length=8, labeltop=True, labelbottom=False, labelsize=18)
         dp1.ax.tick_params(axis='x', direction='inout', which='minor', bottom=True, top=True,
                            length=4)
-        dp1.ax.xaxis.set_label_position("top")
-        for label in dp1.ax.get_xticklabels():
-            label.set_rotation(-30)
-            label.set_ha('right')
-        dp2 = self._plot_electrons()
-        dp2.set_ylabel("ACE Electron Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+        plot2 = DummyDatePlot(fig, ax2)
+        dp2 = self._plot_electrons(plot=plot2)
+        dp2.set_ylabel("ACE Electron Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)", fontsize=16)
         dp2.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
         dp2.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
-        dp2.set_ylim(8, None)
         dp2.ax.set_xlabel("")
         dp2.ax.set_xticklabels([])
-        dp3 = self._plot_hrc()
-        dp3.set_ylabel("HRC Shield Rate & Proxy (Counts)")
+        plot3 = DummyDatePlot(fig, ax3)
+        dp3 = self._plot_hrc(plot=plot3)
+        dp3.set_ylabel("HRC Shield Rate & Proxy\n(Counts)", fontsize=16)
         dp3.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
         dp3.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
-        for dp in [dp1, dp2, dp3]:
-            dp.fig.tight_layout()
-        return dp1, dp2, dp3
+        fig.tight_layout()
+        return fig
 
     def scatter_plots(self):
-        fig, (ax1, ax2) = plt.subplots(figsize=(20, 10), ncols=2)
+        fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
         ax1.scatter(self["p3"], self["hrc_shield"])
         ax1.set_title("GOES HRC Proxy vs. ACE P3", fontsize=18)
         ax2.scatter(self["p3"], self["de1"])
