@@ -1,18 +1,16 @@
-.. _{{storm_date.replace(':', '-')}}:
+.. _2017-250:
 
-{{storm_date}}
+2017:250
 --------------
 
 Basic Facts
 ===========
 
-* Load on Spacecraft: {{load}}  
-* Shutdown: {{shutdown}}  
-{% if shutdown != "NO" %}
-* Shutdown Trigger: {{trigger}}  
-* Shutdown Time: {{shutdown_time}}  
-* Startup Time: {{startup_time}}  
-{% endif %}
+* Load on Spacecraft: SEP0417A  
+* Shutdown: YES  
+* Shutdown Trigger: HRC Anti-Co Shield  
+* Shutdown Time: 2017:250:02:31:00.000  
+* Startup Time: 2017:252:06:04:00.000  
 
 Plots
 =====
@@ -36,6 +34,5 @@ ACE Plots
 +++++++++
 
 .. image:: ace_vs_time.png
-
 
 

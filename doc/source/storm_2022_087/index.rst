@@ -1,18 +1,16 @@
-.. _{{storm_date.replace(':', '-')}}:
+.. _2022-087:
 
-{{storm_date}}
+2022:087
 --------------
 
 Basic Facts
 ===========
 
-* Load on Spacecraft: {{load}}  
-* Shutdown: {{shutdown}}  
-{% if shutdown != "NO" %}
-* Shutdown Trigger: {{trigger}}  
-* Shutdown Time: {{shutdown_time}}  
-* Startup Time: {{startup_time}}  
-{% endif %}
+* Load on Spacecraft: MAR2822A  
+* Shutdown: YES  
+* Shutdown Trigger: ACIS TXings  
+* Shutdown Time: 2022:087:12:40:00.000  
+* Startup Time: 2022:094:05:59:00.000  
 
 Plots
 =====
@@ -36,6 +34,5 @@ ACE Plots
 +++++++++
 
 .. image:: ace_vs_time.png
-
 
 

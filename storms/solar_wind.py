@@ -4,27 +4,29 @@ from astropy.time import TimeDelta
 import astropy.units as u
 from cxotime import CxoTime
 from acispy.plots import CustomDatePlot, DummyDatePlot
-from kadi.events import rad_zones
+from kadi.events import rad_zones, obsids
 from ska_path import ska_path
 from pathlib import Path
 import cheta.fetch_sci as fetch
 import matplotlib.pyplot as plt
-from glob import glob
 import h5py
 from collections import defaultdict
+from kadi.commands import states as cmd_states
+from Ska.Matplotlib import plot_cxctime
+from matplotlib import font_manager
 
 
-ace_file_tmpl = "ACE_BROWSE_{}-*.h5"
+pswitch_time = CxoTime("2003:302:23:50:00").secs
+
+ace_file_tmpl = "epam_data_5min_year{}.h5"
 arc_data = ska_path('data', 'arc')
 
-ace_map = {
-    "p1": "Ion_vlo_EPAM",
-    "p3": "Ion_lo_EPAM",
-    "p5": "Ion_mid_EPAM",
-    "p7": "Ion_hi_EPAM",
-    "de1": "e_lo_EPAM",
-    "de4": "e_hi_EPAM"
-}
+ace_channels = [
+    "P1", "P3", "P5", "P7", "DE1", "DE4"
+]
+
+txings_keys = ["obsid", "times", "I0", "I1", "I2", "I3",
+               "S0", "S1", "S2", "S3", "S4", "S5"]
 
 
 class SolarWind:
@@ -33,23 +35,32 @@ class SolarWind:
         self.start = CxoTime(start)
         self.stop = CxoTime(stop)
         self.rad_zones = rad_zones.filter(self.start, self.stop)
+        self.obsids = obsids.filter(self.start, self.stop)
+        self.states = cmd_states.get_states(start, stop)
         self._get_ace()
         self._get_hrc()
+        self._get_txings()
 
     def _get_ace(self):
         ace_data_dir = Path("/Users/jzuhone/ace")
         times = []
         table = defaultdict(list)
         for year in range(self.start.datetime.year, self.stop.datetime.year + 1):
-            fn = glob(str(ace_data_dir / ace_file_tmpl.format(year)))[0]
+            fn = ace_data_dir / ace_file_tmpl.format(year)
             with h5py.File(fn, "r") as f:
-                d = f['VG_ace_br_5min_avg']['ace_br_5min_avg'][()]
+                d = f["VG_EPAM_data_5min"]["EPAM_data_5min"][()]
                 tfile = CxoTime(d["fp_year"], format="frac_year")
                 idxs = (tfile.secs >= self.start.secs) & (tfile.secs <= self.stop.secs)
-                times.append(tfile.secs[idxs])
-                for k, v in ace_map.items():
-                    table[k].append(d[v][idxs])
-        self.table = Table({k: np.concatenate(table[k]) for k in ace_map})
+                t = tfile.secs[idxs]
+                times.append(t)
+                for k in ace_channels:
+                    if k.startswith("P"):
+                        v = d[k+"p"][idxs]
+                        v[t < pswitch_time] = d[k][idxs][t < pswitch_time]
+                    else:
+                        v = d[k][idxs]
+                    table[k].append(v)
+        self.table = Table({k.lower(): np.concatenate(table[k]) for k in ace_channels})
         self.times = CxoTime(np.concatenate(times), format='secs')
         # Replace data marked as bad or negative fluxes with NaNs
         for name in self.table.colnames:
@@ -75,8 +86,62 @@ class SolarWind:
                 shield1 = np.interp(self.times.secs, msid.times, msid.vals/256)
                 self.table["2shldart"] = shield1
 
+    def _get_txings(self):
+        self.txings_data = defaultdict(list)
+        with h5py.File("/Users/jzuhone/xings.hdf5", "r") as f:
+            for obsid in self.obsids:
+                if obsid.obsid > 39999:
+                    continue
+                this_o = f["obsid"][()] == obsid.obsid
+                if this_o.sum() > 0:
+                    sidxs = (obsid.tstart < self.states["tstart"]) & (obsid.tstop > self.states["tstop"])
+                    pow_cmd = self.states["power_cmd"][sidxs]
+                    tst = self.states["tstart"][sidxs]
+                    ccdc = self.states["ccd_count"][sidxs]
+                    mode = f["processing_mode"].asstr()[this_o][0]
+                    if mode.startswith("Te"):
+                        ssc = "XTZ"
+                    else:
+                        ssc = "XCZ"
+                    t0 = tst[np.char.count(pow_cmd, ssc) == 1][0]
+                    ccd_count = ccdc[np.char.count(pow_cmd, ssc) == 1][0]
+                    biast = (13.0+2*ccd_count)*60.0
+                    for k in txings_keys:
+                        v = f[k][this_o]
+                        if k == "times":
+                            v = np.float64(v-v[0])+t0+biast
+                        self.txings_data[k].append(v)
+        for i, times in enumerate(self.txings_data["times"]):
+            n_fi = 0
+            n_bi = 0
+            fi_rate = np.zeros(self.txings_data["times"][i].shape)
+            bi_rate = np.zeros(self.txings_data["times"][i].shape)
+            for c in ["I0", "I1", "I2", "I3", "S0", "S2", "S4", "S5"]:
+                if self.txings_data[c][i].all() > 0.0:
+                    n_fi += 1
+                    fi_rate += self.txings_data[c][i]
+            for c in ["S1", "S3"]:
+                if self.txings_data[c][i].all() > 0.0:
+                    n_bi += 1
+                    bi_rate += self.txings_data[c][i]
+            if n_fi > 0:
+                fi_rate /= n_fi
+            if n_bi > 0:
+                bi_rate /= n_bi
+            self.txings_data["fi_rate"].append(fi_rate)
+            self.txings_data["bi_rate"].append(bi_rate)
+
     def __getitem__(self, item):
         return self.table[item]
+
+    def _plot_rzs(self, ax):
+        t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
+        tplot = CxoTime(t).plot_date
+        for radzone in self.rad_zones:
+            in_evt = (t >= radzone.tstart) & (t <= radzone.tstop)
+            ax.fill_between(tplot, 0, 1, where=in_evt,
+                               transform=ax.get_xaxis_transform(),
+                               color="mediumpurple", alpha=0.333333)
 
     def plot_electrons(self):
         return self._plot_electrons()
@@ -88,18 +153,20 @@ class SolarWind:
         dp.set_yscale("log")
         dp.set_ylabel("Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
         dp.set_legend(loc='upper left', fontsize=14)
-        dp.set_ylim(0.5*de_all.min(), 1.5*de_all.max())
-        t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
-        tplot = CxoTime(t).plot_date
-        for radzone in self.rad_zones:
-            in_evt = (t >= radzone.tstart) & (t <= radzone.tstop)
-            dp.ax.fill_between(tplot, 0, 1, where=in_evt,
-                               transform=dp.ax.get_xaxis_transform(),
-                               color="mediumpurple", alpha=0.333333)
+        dp.set_ylim(0.5*np.nanmin(de_all), 1.5*np.nanmax(de_all))
+        self._plot_rzs(dp.ax)
         return dp
 
     def plot_protons(self):
         return self._plot_protons()
+
+    def _plot_p3(self, plot=None):
+        dp = CustomDatePlot(self.times, self["p3"], plot=plot, color="C1")
+        dp.set_yscale("log")
+        dp.set_ylabel("ACE P3 Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+        dp.set_ylim(0.5*np.nanmin(self["p3"]), 1.5*np.nanmax(self["p3"]))
+        self._plot_rzs(dp.ax)
+        return dp
 
     def _plot_protons(self, plot=None):
         dp = CustomDatePlot(self.times, self["p1"], label="P1", plot=plot)
@@ -110,14 +177,8 @@ class SolarWind:
         dp.set_yscale("log")
         dp.set_ylabel("Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
         dp.set_legend(loc='upper left', fontsize=14)
-        dp.set_ylim(0.5*p_all.min(), 1.5*p_all.max())
-        t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
-        tplot = CxoTime(t).plot_date
-        for radzone in self.rad_zones:
-            in_evt = (t >= radzone.tstart) & (t <= radzone.tstop)
-            dp.ax.fill_between(tplot, 0, 1, where=in_evt,
-                               transform=dp.ax.get_xaxis_transform(),
-                               color="mediumpurple", alpha=0.333333)
+        dp.set_ylim(0.5*np.nanmin(p_all), 1.5*np.nanmax(p_all))
+        self._plot_rzs(dp.ax)
         return dp
 
     def plot_proton_spectra(self, times):
@@ -169,17 +230,56 @@ class SolarWind:
         dp.set_ylabel("Counts")
         dp.set_legend(loc='upper left', fontsize=14)
         dp.set_ylim(0.5*np.nanmin(h_all), 1.5*np.nanmax(h_all))
-        t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
-        tplot = CxoTime(t).plot_date
-        for radzone in self.rad_zones:
-            in_evt = (t >= radzone.tstart) & (t <= radzone.tstop)
-            dp.ax.fill_between(tplot, 0, 1, where=in_evt,
-                               transform=dp.ax.get_xaxis_transform(),
-                               color="mediumpurple", alpha=0.333333)
+        self._plot_rzs(dp.ax)
         return dp
+
+    def _plot_txings(self, fig, ax):
+        for i, times in enumerate(self.txings_data["times"]):
+            if i == 0:
+                labels = ["FI", "BI"]
+            else:
+                labels = [None]*2
+            _, _, _ = plot_cxctime(times, self.txings_data["fi_rate"][i], color="C0", 
+                                   label=labels[0], fig=fig, ax=ax)
+            _, _, _ = plot_cxctime(times, self.txings_data["bi_rate"][i], color="C1", 
+                                   label=labels[1], fig=fig, ax=ax)
+        ax.set_yscale("log")
+        ax.set_ylim(0.1, 100)
+        ax.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
+        ax.tick_params(which="major", width=2, length=6)
+        ax.tick_params(which="minor", width=2, length=3)
+        fontProperties = font_manager.FontProperties(size=18)                                                                                                                                                   
+        for label in ax.get_xticklabels():
+            label.set_fontproperties(fontProperties)
+        for label in ax.get_yticklabels():
+            label.set_fontproperties(fontProperties)
+        for axis in ['top', 'bottom', 'left', 'right']:
+            ax.spines[axis].set_linewidth(2)
+        ax.legend(fontsize=18)
+        self._plot_rzs(ax)
 
     def plot_all(self):
         fig, (ax1, ax2, ax3) = plt.subplots(figsize=(10,15), nrows=3)
+        plot1 = DummyDatePlot(fig, ax1)
+        dp1 = self._plot_p3(plot=plot1)
+        dp1.set_ylabel("ACE P3 Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)", fontsize=16)
+        dp1.ax.tick_params(axis='x', direction='inout', which='major', bottom=True, top=True,
+                           length=8, labeltop=True, labelbottom=False, labelsize=18)
+        dp1.ax.tick_params(axis='x', direction='inout', which='minor', bottom=True, top=True,
+                           length=4)
+        self._plot_txings(fig, ax2)
+        xlim = dp1.ax.get_xlim()
+        ax2.set_xlim(*xlim)
+        plot3 = DummyDatePlot(fig, ax3)
+        dp3 = self._plot_hrc(plot=plot3)
+        dp3.set_ylabel("HRC Shield Rate & Proxy\n(Counts)", fontsize=16)
+        dp3.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
+        dp3.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
+        fig.tight_layout()
+        return fig
+
+    def plot_ace(self):
+        fig, (ax1, ax2) = plt.subplots(figsize=(10, 10), nrows=2)
         plot1 = DummyDatePlot(fig, ax1)
         dp1 = self._plot_protons(plot=plot1)
         dp1.set_ylabel("ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)", fontsize=16)
@@ -194,11 +294,6 @@ class SolarWind:
         dp2.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
         dp2.ax.set_xlabel("")
         dp2.ax.set_xticklabels([])
-        plot3 = DummyDatePlot(fig, ax3)
-        dp3 = self._plot_hrc(plot=plot3)
-        dp3.set_ylabel("HRC Shield Rate & Proxy\n(Counts)", fontsize=16)
-        dp3.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
-        dp3.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
         fig.tight_layout()
         return fig
 
@@ -206,18 +301,24 @@ class SolarWind:
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
         ax1.scatter(self["p3"], self["hrc_shield"])
         ax1.set_title("GOES HRC Proxy vs. ACE P3", fontsize=18)
-        ax2.scatter(self["p3"], self["de1"])
-        ax2.set_title("ACE DE1 vs. ACE P3", fontsize=18)
+        fi_rate = np.empty(self.times.secs.shape)
+        fi_rate[:] = np.nan
+        for i, times in enumerate(self.txings_data["times"]):
+            idxs = np.searchsorted(self.times.secs, times)-1
+            fi_rate[idxs] = self.txings_data["fi_rate"][i]
+        ax2.scatter(self["hrc_shield"], fi_rate)
+        ax2.set_title("FI Txings vs. Goes Proxy", fontsize=18)
+        ax1.set_yscale("log")
+        ax1.set_xlabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
+                      fontsize=18)
+        ax2.set_xlabel("GOES Proxy (counts)", fontsize=18)
         for ax in [ax1, ax2]:
-            ax.set_xlabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-                          fontsize=18)
             ax.set_xscale('log')
             ax.set_yscale('log')
             ax.tick_params(which='major', width=2, length=6, labelsize=18)
-            ax.tick_params(which='minor', width=2, length=3)
+            ax.tick_params(which='minor', width=2, length=3, labelsize=18)
             for axis in ['top', 'bottom', 'left', 'right']:
                 ax.spines[axis].set_linewidth(2)
         ax1.set_ylabel("GOES Proxy (counts)", fontsize=18)
-        ax2.set_ylabel("ACE DE1 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-                       fontsize=18)
-        return fig
+        ax2.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
+        return fig, fi_rate

@@ -1,18 +1,16 @@
-.. _{{storm_date.replace(':', '-')}}:
+.. _2015-173:
 
-{{storm_date}}
+2015:173
 --------------
 
 Basic Facts
 ===========
 
-* Load on Spacecraft: {{load}}  
-* Shutdown: {{shutdown}}  
-{% if shutdown != "NO" %}
-* Shutdown Trigger: {{trigger}}  
-* Shutdown Time: {{shutdown_time}}  
-* Startup Time: {{startup_time}}  
-{% endif %}
+* Load on Spacecraft: JUN2115A  
+* Shutdown: YES  
+* Shutdown Trigger: Manual  
+* Shutdown Time: 2015:173:22:40:00.000  
+* Startup Time: 2015:174:21:40:00.000  
 
 Plots
 =====
@@ -36,6 +34,5 @@ ACE Plots
 +++++++++
 
 .. image:: ace_vs_time.png
-
 
 
