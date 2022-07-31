@@ -42,7 +42,7 @@ class SolarWind:
         self._get_txings()
 
     def _get_ace(self):
-        ace_data_dir = Path("/Users/jzuhone/ace")
+        ace_data_dir = Path("/data/acis/ace")
         times = []
         table = defaultdict(list)
         for year in range(self.start.datetime.year, self.stop.datetime.year + 1):

@@ -30,11 +30,11 @@ def main(fn):
     
     with open(fn, "r") as f:
         inputs = json.load(f)
-    
+
     trigger_names = {"acis": "ACIS TXings",
                      "hrc": "HRC Anti-Co Shield",
                      "manual": "Manual"}
-    
+
     if inputs["shutdown"] == "YES":
         shutdown = CxoTime(inputs["shutdown_time"])
         startup = CxoTime(inputs["startup_time"])
@@ -86,7 +86,7 @@ def main(fn):
     fig.savefig(storm_dir / "scatter_plots.png")
 
     fig = sw.plot_ace()
-    if inputs["SHUTDOWN"] == "YES":
+    if inputs["shutdown"] == "YES":
         for ax in fig.axes:
             plot_shutdown(sw, shutdown, startup, ax)
 
