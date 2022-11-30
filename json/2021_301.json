@@ -1,0 +1,9 @@
+{
+  "shutdown": "YES",
+  "shutdown_time": "2021-10-28T16:35:00",
+  "startup_time": "2021-10-30T23:30:00",
+  "trigger": "acis",
+  "load": "OCT2621B",
+  "spectrum_times": [
+  ]
+}

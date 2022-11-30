@@ -248,7 +248,7 @@ class SolarWind:
         ax.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
         ax.tick_params(which="major", width=2, length=6)
         ax.tick_params(which="minor", width=2, length=3)
-        fontProperties = font_manager.FontProperties(size=18)                                                                                                                                                   
+        fontProperties = font_manager.FontProperties(size=18)
         for label in ax.get_xticklabels():
             label.set_fontproperties(fontProperties)
         for label in ax.get_yticklabels():
@@ -275,6 +275,7 @@ class SolarWind:
         dp3.set_ylabel("HRC Shield Rate & Proxy\n(Counts)", fontsize=16)
         dp3.ax.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
         dp3.ax.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
+        ax3.set_xlim(*xlim)
         fig.tight_layout()
         return fig
 
@@ -301,6 +302,10 @@ class SolarWind:
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
         ax1.scatter(self["p3"], self["hrc_shield"])
         ax1.set_title("GOES HRC Proxy vs. ACE P3", fontsize=18)
+        ax1.set_xlabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
+                      fontsize=18)
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
         fi_rate = np.empty(self.times.secs.shape)
         fi_rate[:] = np.nan
         for i, times in enumerate(self.txings_data["times"]):
@@ -308,13 +313,11 @@ class SolarWind:
             fi_rate[idxs] = self.txings_data["fi_rate"][i]
         ax2.scatter(self["hrc_shield"], fi_rate)
         ax2.set_title("FI Txings vs. Goes Proxy", fontsize=18)
-        ax1.set_yscale("log")
-        ax1.set_xlabel("ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-                      fontsize=18)
         ax2.set_xlabel("GOES Proxy (counts)", fontsize=18)
+        ax2.set_xscale('log')
+        if np.all(np.nan_to_num(fi_rate) > 0):
+            ax2.set_yscale('log')
         for ax in [ax1, ax2]:
-            ax.set_xscale('log')
-            ax.set_yscale('log')
             ax.tick_params(which='major', width=2, length=6, labelsize=18)
             ax.tick_params(which='minor', width=2, length=3, labelsize=18)
             for axis in ['top', 'bottom', 'left', 'right']:

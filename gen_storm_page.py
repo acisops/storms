@@ -40,7 +40,7 @@ def main(fn):
         startup = CxoTime(inputs["startup_time"])
         dt = TimeDelta(2.0*u.d)
         begin_time = shutdown-dt
-        end_time = shutdown+dt
+        end_time = startup+dt
         storm_date = shutdown.yday[:8]
     else:
         shutdown = None
