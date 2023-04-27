@@ -30,9 +30,8 @@ Scatter Plots
 
 .. image:: scatter_plots.png
 
-ACE Plots
-+++++++++
+Proton & Electron Plots
++++++++++++++++++++++++
 
 .. image:: ace_vs_time.png
-
 

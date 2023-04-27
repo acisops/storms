@@ -2,6 +2,7 @@
   "shutdown": "YES",
   "shutdown_time": "2015-06-22T22:40:00",
   "startup_time": "2015-06-23T21:40:00",
+  "oormpds_time": "2015:175:11:52:46.482",
   "trigger": "manual",
   "load": "JUN2115A",
   "spectrum_times": [

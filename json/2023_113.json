@@ -1,0 +1,12 @@
+{
+  "shutdown": "YES",
+  "browse": true,
+  "shutdown_time": "2023:113:22:34:00.000",
+  "startup_time": "2023:115:06:54:12.657",
+  "oormpds_time": "2023:114:20:34:13.657",
+  "trigger": "manual",
+  "load": "APR2423B",
+  "skip": true,
+  "spectrum_times": [
+  ]
+}

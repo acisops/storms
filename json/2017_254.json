@@ -2,6 +2,7 @@
   "shutdown": "YES",
   "shutdown_time": "2017-09-11T07:51:00",
   "startup_time": "2017-09-13T22:56:00",
+  "oormpds_time": "2017:256:08:56:29.503",
   "trigger": "hrc",
   "load": "SEP0917A",
   "spectrum_times": [

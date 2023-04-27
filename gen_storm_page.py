@@ -27,9 +27,15 @@ def plot_shutdown(sw, shutdown, startup, ax):
 
 
 def main(fn):
-    
+
     with open(fn, "r") as f:
         inputs = json.load(f)
+
+    skip = inputs.get("skip", False)
+    if skip:
+        return
+
+    browse = inputs.get("browse", False)
 
     trigger_names = {"acis": "ACIS TXings",
                      "hrc": "HRC Anti-Co Shield",
@@ -53,9 +59,9 @@ def main(fn):
     if not storm_dir.exists():
         storm_dir.mkdir()
 
-    sw = storms.SolarWind(begin_time, end_time)
+    sw = storms.SolarWind(begin_time, end_time, browse=browse)
 
-    fig = sw.plot_all()
+    fig, xlim = sw.plot_all()
     if inputs["shutdown"] == "YES":
         for ax in fig.axes:
             plot_shutdown(sw, shutdown, startup, ax)
@@ -79,13 +85,17 @@ def main(fn):
     if inputs["shutdown"] == "YES":
         idx = np.searchsorted(sw.times, shutdown.secs)-1
         row = sw.table[idx]
+        sw.table.meta["comments"] = [f"idx = {idx}"]
         fig.axes[0].plot(row["p3"], row["hrc_shield"], 'x', mew=3, ms=20,
                          color='C3', label="Shutdown")
         fig.axes[0].legend(fontsize=18)
         fig.axes[1].plot(row["hrc_shield"], fi_rate[idx], 'x', mew=3, ms=20, color='C3')
     fig.savefig(storm_dir / "scatter_plots.png")
+    sw.table["times"] = sw.times
+    sw.table["fi_rate"] = fi_rate
+    sw.table.write(f"{str(fn)[:-4]}ecsv", format="ascii.ecsv", overwrite=True)
 
-    fig = sw.plot_ace()
+    fig = sw.plot_ace(xlim=xlim)
     if inputs["shutdown"] == "YES":
         for ax in fig.axes:
             plot_shutdown(sw, shutdown, startup, ax)

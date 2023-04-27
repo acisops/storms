@@ -1,3 +1,6 @@
 storms.egg-info
 storms/__pycache__
 doc/build
+.eggs
+.vscode
+.idea

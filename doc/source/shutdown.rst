@@ -9,3 +9,6 @@ Storms Which Caused Shutdowns
 * :ref:`2021-301`
 
 * :ref:`2022-087`
+
+* :ref:`2023-058`
+* :ref:`2023-074`
