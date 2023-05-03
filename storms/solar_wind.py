@@ -1,6 +1,7 @@
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack
 from astropy.time import TimeDelta
+from astropy.io import ascii
 import astropy.units as u
 from cxotime import CxoTime
 from acispy.plots import CustomDatePlot, DummyDatePlot
@@ -16,6 +17,14 @@ from Ska.Matplotlib import plot_cxctime
 from matplotlib import font_manager
 from datetime import datetime
 from calendar import isleap
+
+
+def convert_txings_date(dates):
+    times = []
+    for d in dates:
+        doy, secs = d.rsplit(":", 1)
+        times.append((CxoTime(doy) + float(secs) * u.s).secs)
+    return np.array(times)
 
 
 pswitch_time = CxoTime("2003:302:23:50:00").secs
@@ -34,6 +43,19 @@ browse_channels = {
     "DE1": "e_lo_EPAM",
     "DE4": "e_hi_EPAM",
 }
+
+txings_cols = [
+    "processing_phase",
+    "observing_run",
+    "date",
+    "obsid",
+    "seconds",
+    "triggered",
+    "fi_rate_limit",
+    "bi_rate_limit",
+    "fi_rate",
+    "bi_rate"
+]
 
 txings_keys = ["obsid", "times", "I0", "I1", "I2", "I3",
                "S0", "S1", "S2", "S3", "S4", "S5"]
@@ -64,7 +86,7 @@ p_ebins = np.array([[46, 67], [112, 187], [310, 580],
 
 class SolarWind:
 
-    def __init__(self, start, stop, browse=False, no_txings=False,
+    def __init__(self, start, stop, browse=False, txings_files=None,
                  no_hrc=False):
         self.start = CxoTime(start)
         self.stop = CxoTime(stop)
@@ -74,8 +96,8 @@ class SolarWind:
         self._get_ace(browse=browse)
         if not no_hrc:
             self._get_hrc()
-        if not no_txings:
-            self._get_txings()
+        if txings_files:
+            self._get_txings(txings_files)
 
     def _get_ace_file(self, year, browse=False):
         if browse:
@@ -141,51 +163,13 @@ class SolarWind:
                 shield1 = np.interp(self.times.secs, msid.times, msid.vals/256)
                 self.table["2shldart"] = shield1
 
-    def _get_txings(self):
-        self.txings_data = defaultdict(list)
-        with h5py.File("/Users/jzuhone/xings.hdf5", "r") as f:
-            for obsid in self.obsids:
-                if obsid.obsid > 39999:
-                    continue
-                this_o = f["obsid"][()] == obsid.obsid
-                if this_o.sum() > 0:
-                    sidxs = (obsid.tstart < self.states["tstart"]) & (obsid.tstop > self.states["tstop"])
-                    pow_cmd = self.states["power_cmd"][sidxs]
-                    tst = self.states["tstart"][sidxs]
-                    ccdc = self.states["ccd_count"][sidxs]
-                    mode = f["processing_mode"].asstr()[this_o][0]
-                    print(mode, pow_cmd, obsid)
-                    if mode.startswith("Te"):
-                        ssc = "XTZ"
-                    else:
-                        ssc = "XCZ"
-                    t0 = tst[np.char.count(pow_cmd, ssc) == 1][0]
-                    ccd_count = ccdc[np.char.count(pow_cmd, ssc) == 1][0]
-                    biast = (13.0+2*ccd_count)*60.0
-                    for k in txings_keys:
-                        v = f[k][this_o]
-                        if k == "times":
-                            v = np.float64(v-v[0])+t0+biast
-                        self.txings_data[k].append(v)
-        for i, times in enumerate(self.txings_data["times"]):
-            n_fi = 0
-            n_bi = 0
-            fi_rate = np.zeros(self.txings_data["times"][i].shape)
-            bi_rate = np.zeros(self.txings_data["times"][i].shape)
-            for c in ["I0", "I1", "I2", "I3", "S0", "S2", "S4", "S5"]:
-                if self.txings_data[c][i].all() > 0.0:
-                    n_fi += 1
-                    fi_rate += self.txings_data[c][i]
-            for c in ["S1", "S3"]:
-                if self.txings_data[c][i].all() > 0.0:
-                    n_bi += 1
-                    bi_rate += self.txings_data[c][i]
-            if n_fi > 0:
-                fi_rate /= n_fi
-            if n_bi > 0:
-                bi_rate /= n_bi
-            self.txings_data["fi_rate"].append(fi_rate)
-            self.txings_data["bi_rate"].append(bi_rate)
+    def _get_txings(self, txings_files):
+        t = vstack([ascii.read(f"/data/acis/txings/{fn}", names=txings_cols)
+                    for fn in txings_files])
+        times = convert_txings_date(t["date"].data)
+        idxs = (times > self.start.secs) & (times < self.stop.secs)
+        self.txings_data = t[idxs]
+        self.txings_data["time"] = times[idxs]
 
     def __getitem__(self, item):
         return self.table[item]
@@ -305,20 +289,31 @@ class SolarWind:
         dp.set_yscale("log")
         dp.set_ylabel("Counts")
         dp.set_legend(loc='upper left', fontsize=14)
-        dp.set_ylim(0.5*np.nanmin(h_all), 1.5*np.nanmax(h_all))
+        dp.set_ylim(0.5*np.nanmin(h_all), 250.0)
+        dp.add_hline(235.0, ls='--', lw=2, color="C3")
         self._plot_rzs(dp.ax)
         return dp
 
     def _plot_txings(self, fig, ax):
-        for i, times in enumerate(self.txings_data["times"]):
-            if i == 0:
-                labels = ["FI", "BI"]
+        get_labels = True
+        for i, o in enumerate(self.obsids):
+            if o.obsid > 39999:
+                continue
+            if get_labels:
+                labels = ["FI", "BI", "FI Limit", "BI Limit"]
+                get_labels = False
             else:
-                labels = [None]*2
-            _, _, _ = plot_cxctime(times, self.txings_data["fi_rate"][i], color="C0", 
-                                   label=labels[0], fig=fig, ax=ax)
-            _, _, _ = plot_cxctime(times, self.txings_data["bi_rate"][i], color="C1", 
-                                   label=labels[1], fig=fig, ax=ax)
+                labels = [None]*4
+            this_o = self.txings_data["obsid"] == o.obsid
+            t = self.txings_data[this_o]
+            _, _, _ = plot_cxctime(t["time"], t["fi_rate"]*0.01, fmt='.', color="C0",
+                                   ls='', label=labels[0], fig=fig, ax=ax)
+            _, _, _ = plot_cxctime(t["time"], t["bi_rate"]*0.01, fmt='.', color="C1",
+                                   ls='', label=labels[1], fig=fig, ax=ax)
+            _, _, _ = plot_cxctime(t["time"], t["fi_rate_limit"]*0.01, color="C0",
+                                   label=labels[2], fig=fig, ax=ax)
+            _, _, _ = plot_cxctime(t["time"], t["bi_rate_limit"]*0.01, color="C1",
+                                   label=labels[3], fig=fig, ax=ax)
         ax.set_yscale("log")
         ax.set_ylim(0.1, 100)
         ax.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
@@ -344,6 +339,8 @@ class SolarWind:
         dp1.ax.tick_params(axis='x', direction='inout', which='minor', bottom=True, top=True,
                            length=4)
         self._plot_txings(fig, ax2)
+        ax2.tick_params(axis='x', direction='inout', which='major', length=8, top=True, bottom=True)
+        ax2.tick_params(axis='x', direction='inout', which='minor', length=4, top=True, bottom=True)
         xlim = dp1.ax.get_xlim()
         ax2.set_xlim(*xlim)
         plot3 = DummyDatePlot(fig, ax3, [], None, [])
@@ -407,9 +404,13 @@ class SolarWind:
         ax1.set_yscale('log')
         fi_rate = np.empty(self.times.secs.shape)
         fi_rate[:] = np.nan
-        for i, times in enumerate(self.txings_data["times"]):
-            idxs = np.searchsorted(self.times.secs, times)-1
-            fi_rate[idxs] = self.txings_data["fi_rate"][i]
+        for o in self.obsids:
+            if o.obsid > 39999:
+                continue
+            this_o = self.txings_data["obsid"] == o.obsid
+            t = self.txings_data[this_o]
+            idxs = np.searchsorted(self.times.secs, t["time"])-1
+            fi_rate[idxs] = t["fi_rate"]*0.01
         ax2.scatter(self["hrc_shield"], fi_rate)
         ax2.set_title("FI Txings vs. Goes Proxy", fontsize=18)
         ax2.set_xlabel("GOES Proxy (counts)", fontsize=18)

@@ -6,7 +6,7 @@
 Basic Facts
 ===========
 
-* Load on Spacecraft: OCT2621B  
+* Load on Spacecraft: OCT2521B  
 * Shutdown: YES  
 * Shutdown Trigger: ACIS TXings  
 * Shutdown Time: 2021:301:16:35:00.000  

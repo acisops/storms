@@ -1,11 +1,15 @@
 {
   "shutdown": "YES",
   "browse": true,
-  "shutdown_time": "2023:058:03:18:36",
+  "shutdown_time": "2023:058:03:14:49.000",
   "startup_time": "2023:060:06:29:02.000",
+  "oormpen_time": "2023:057:04:54:44.508",
   "oormpds_time": "2023:059:07:55:25.572",
   "trigger": "manual",
   "load": "FEB2423A",
   "spectrum_times": [
+  ],
+  "txings_files": [
+    "acis123d.txt"
   ]
 }

@@ -27,13 +27,8 @@ Scatter Plots
 
 .. image:: scatter_plots.png
 
-ACE Plots
-+++++++++
+Proton & Electron Plots
++++++++++++++++++++++++
 
 .. image:: ace_vs_time.png
-
-Goes Proton Plots
-+++++++++++++++++
-
-.. image:: goes_r_vs_time.png
 

@@ -9,7 +9,7 @@ Basic Facts
 * Load on Spacecraft: FEB2423A  
 * Shutdown: YES  
 * Shutdown Trigger: Manual  
-* Shutdown Time: 2023:058:03:18:36.000  
+* Shutdown Time: 2023:058:03:14:49.000  
 * Startup Time: 2023:060:06:29:02.000  
 
 Plots

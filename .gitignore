@@ -4,3 +4,5 @@ doc/build
 .eggs
 .vscode
 .idea
+json/*.pdf
+json/*.png

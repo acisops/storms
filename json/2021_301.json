@@ -2,9 +2,14 @@
   "shutdown": "YES",
   "shutdown_time": "2021-10-28T16:35:00",
   "startup_time": "2021-10-30T23:30:00",
+  "oormpen_time": "2021:300:15:37:26.267",
   "oormpds_time": "2021:302:18:28:24.176",
   "trigger": "acis",
-  "load": "OCT2621B",
+  "load": "OCT2521B",
   "spectrum_times": [
+  ],
+  "txings_files": [
+    "acis117d.txt",
+    "acis117e.txt"
   ]
 }

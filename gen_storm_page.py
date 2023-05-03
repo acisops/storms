@@ -20,9 +20,9 @@ def plot_shutdown(sw, shutdown, startup, ax):
                     transform=ax.get_xaxis_transform(),
                     color="C3", alpha=0.25, zorder=-10)
     ymin = ax.get_ylim()[0]
-    ax.text(shutdown.plot_date + 0.1, 1.5 * ymin, "SHUTDOWN",
+    ax.text(shutdown.plot_date + 0.1, 2.0 * ymin, "SHUTDOWN",
             fontsize=15, rotation="vertical")
-    ax.text(startup.plot_date + 0.1, 1.5 * ymin, "STARTUP",
+    ax.text(startup.plot_date + 0.1, 2.0 * ymin, "STARTUP",
             fontsize=15, rotation="vertical")
 
 
@@ -59,7 +59,8 @@ def main(fn):
     if not storm_dir.exists():
         storm_dir.mkdir()
 
-    sw = storms.SolarWind(begin_time, end_time, browse=browse)
+    sw = storms.SolarWind(begin_time, end_time, browse=browse,
+                          txings_files=inputs["txings_files"])
 
     fig, xlim = sw.plot_all()
     if inputs["shutdown"] == "YES":

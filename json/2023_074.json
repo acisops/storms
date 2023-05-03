@@ -3,9 +3,14 @@
   "browse": true,
   "shutdown_time": "2023:074:11:37:45",
   "startup_time": "2023:076:04:13:58.000",
+  "oormpen_time": "2023:073:00:25:12.896",
   "oormpds_time": "2023:075:04:06:42.946",
   "trigger": "manual",
   "load": "MAR1323A",
   "spectrum_times": [
+  ],
+  "txings_files": [
+    "acis123d.txt",
+    "acis123e.txt"
   ]
 }
