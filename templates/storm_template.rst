@@ -22,10 +22,10 @@ Radiation vs. Time
 
 .. image:: rad_vs_time.png
 
-Proton Spectra at Selected Times
-++++++++++++++++++++++++++++++++
+Proton Spectral Index
++++++++++++++++++++++
 
-.. image:: proton_spectra.png
+.. image:: index_vs_time.png
 
 Scatter Plots
 +++++++++++++

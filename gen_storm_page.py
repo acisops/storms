@@ -10,6 +10,7 @@ import re
 from pathlib import Path, PurePath
 import json
 import sys
+from astropy.table import Table
 
 
 def plot_shutdown(sw, shutdown, startup, ax):
@@ -77,9 +78,9 @@ def main(fn):
         fig = sw.plot_proton_spectra(times)
         if inputs["shutdown"] == "YES":
             plot_shutdown(sw, shutdown, startup, fig.axes[1])
-        xlim = [CxoTime(times[0]-0.5*86400.0).plot_date,
+        xlim2 = [CxoTime(times[0]-0.5*86400.0).plot_date,
                 CxoTime(times[-1]+0.5*86400.0).plot_date]
-        fig.axes[1].set_xlim(*xlim)
+        fig.axes[1].set_xlim(*xlim2)
         fig.savefig(storm_dir / "proton_spectra.png")
 
     fig, fi_rate = sw.scatter_plots()
@@ -92,9 +93,12 @@ def main(fn):
         fig.axes[0].legend(fontsize=18)
         fig.axes[1].plot(row["hrc_shield"], fi_rate[idx], 'x', mew=3, ms=20, color='C3')
     fig.savefig(storm_dir / "scatter_plots.png")
-    sw.table["times"] = sw.times
+    sw.table["times"] = sw.times.secs
     sw.table["fi_rate"] = fi_rate
     sw.table.write(f"{str(fn)[:-4]}ecsv", format="ascii.ecsv", overwrite=True)
+
+    txingst = Table(sw.rates)
+    txingst.write(f"{str(fn)[:-5]}_txings.ecsv", format="ascii.ecsv", overwrite=True)
 
     fig = sw.plot_ace(xlim=xlim)
     if inputs["shutdown"] == "YES":
@@ -102,6 +106,14 @@ def main(fn):
             plot_shutdown(sw, shutdown, startup, ax)
 
     fig.savefig(storm_dir / "ace_vs_time.png")
+
+    dp = sw.plot_index()
+    dp.ax.set_xlim(*xlim)
+    dp.set_ylim(-6, None)
+    if inputs["shutdown"] == "YES":
+        plot_shutdown(sw, shutdown, startup, dp.ax)
+
+    dp.savefig(storm_dir / "index_vs_time.png")
 
     storm_template_file = 'storm_template.rst'
 
