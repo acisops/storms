@@ -17,14 +17,19 @@ from Ska.Matplotlib import plot_cxctime
 from matplotlib import font_manager
 from datetime import datetime
 from calendar import isleap
+from more_itertools import always_iterable
 
 
 def convert_txings_date(dates):
-    times = []
+    dates = always_iterable(dates)
+    doy = []
+    secs = []
     for d in dates:
-        doy, secs = d.rsplit(":", 1)
-        times.append((CxoTime(doy) + float(secs) * u.s).secs)
-    return np.array(times)
+        d1, d2 = d.rsplit(":", 1)
+        doy.append(d1)
+        secs.append(float(d2))
+    times = CxoTime(doy) + secs * u.s
+    return times.secs
 
 
 pswitch_time = CxoTime("2003:302:23:50:00").secs
@@ -42,6 +47,8 @@ browse_channels = {
     "P7": "Ion_hi_EPAM",
     "DE1": "e_lo_EPAM",
     "DE4": "e_hi_EPAM",
+    "Plo": "H_lo_SIS",
+    "Phi": "H_hi_SIS",
 }
 
 txings_cols = [
@@ -79,25 +86,53 @@ goes_r_bands = np.array([
     [276000, 404000]
 ])
 
+goes_bands = np.array([
+    [0.74, 4.2],
+    [4.2, 8.7],
+    [8.7, 14.5],
+    [15.0, 40.0],
+    [38, 82],
+    [84, 200],
+    [110, 900]
+])*1.0e3
+
+e_goes = 0.5*goes_bands.sum(axis=1)
+e_goes_r = 0.5*goes_r_bands.sum(axis=1)
+
 e_ebins = np.array([[47, 65], [112, 187]])
+e_emid = 0.5 * e_ebins.sum(axis=1)
 p_ebins = np.array([[46, 67], [112, 187], [310, 580],
                     [1060, 1910]])
+p_emid = 0.5 * p_ebins.sum(axis=1)
+
+
+ace_data_dir = Path("/data/acis/ace")
+goes_data_dir = Path("/data/acis/goes")
+txings_data_dir = Path("/data/acis/txings")
+
+
+def find_index(t, e, channels):
+    loge = np.log10(e)
+    X = np.vstack([np.ones(e.size), loge]).T
+    logF = np.log10([t[c] for c in channels])
+    beta = np.linalg.inv(np.dot(X.T,X)) @ np.dot(X.T, logF)
+    return beta[1]
 
 
 class SolarWind:
 
-    def __init__(self, start, stop, browse=False, txings_files=None,
+    def __init__(self, start, stop, browse=False, txings=False,
                  no_hrc=False):
         self.start = CxoTime(start)
         self.stop = CxoTime(stop)
         self.rad_zones = rad_zones.filter(self.start, self.stop)
         self.obsids = obsids.filter(self.start, self.stop)
-        self.states = cmd_states.get_states(start, stop)
+        #self.states = cmd_states.get_states(start, stop)
         self._get_ace(browse=browse)
         if not no_hrc:
             self._get_hrc()
-        if txings_files:
-            self._get_txings(txings_files)
+        if txings:
+            self._get_txings()
 
     def _get_ace_file(self, year, browse=False):
         if browse:
@@ -109,14 +144,22 @@ class SolarWind:
                 fn = f"ACE_BROWSE_{year}-001_to_{year}-{last_day}.h5"
         else:
             fn = f"epam_data_5min_year{year}.h5"
+        fn = ace_data_dir / fn
+        if not fn.exists():
+            # sometimes we end up in a spot where they add data from a new
+            # year to the end of the last file, so try it here
+            fn = Path(str(fn).replace(str(year), str(year-1)))
         return fn
 
     def _get_ace(self, browse=False):
-        ace_data_dir = Path("/data/acis/ace")
         times = []
         table = defaultdict(list)
         for year in range(self.start.datetime.year, self.stop.datetime.year + 1):
             fn = ace_data_dir / self._get_ace_file(year, browse=browse)
+            if not fn.exists():
+                # sometimes we end up in a spot where they add data from a new
+                # year to the end of the last file, so try it here
+                fn = ace_data_dir / self._get_ace_file(year-1, browse=browse)
             with h5py.File(fn, "r") as f:
                 if browse:
                     d = f['VG_ace_br_5min_avg']['ace_br_5min_avg'][()]
@@ -140,10 +183,11 @@ class SolarWind:
         self.times = CxoTime(np.concatenate(times), format='secs')
         # Replace data marked as bad or negative fluxes with NaNs
         for name in self.table.colnames:
-            if name in ["de1", "de4"]:
-                self.table[name][self.table[name] < 1.0e-3] = np.nan
-            elif name in ["p1", "p3", "p5", "p7"]:
-                self.table[name][self.table[name] < 1.0e-3] = np.nan
+            self.table[name][self.table[name] < 1.0e-3] = np.nan
+            #if name in ["de1", "de4"]:
+            #    self.table[name][self.table[name] < 1.0e-3] = np.nan
+            #elif name in ["p1", "p3", "p5", "p7"]:
+            #    self.table[name][self.table[name] < 1.0e-3] = np.nan
 
     def _get_hrc(self):
         hrc_data = Path(arc_data) / "hrc_shield.h5"
@@ -151,20 +195,39 @@ class SolarWind:
             d = f["data"][()]
             t = d["time"]
             self.table["hrc_shield"] = np.interp(self.times.secs, t, d["hrc_shield"])
-            for pf in goes_r_channels:
-                self.table[f"g{pf}"] = np.interp(self.times.secs, t, d[pf])
+            #for pf in goes_r_channels:
+            #    self.table[f"g{pf}"] = np.interp(self.times.secs, t, d[pf])
         bad = self.table["hrc_shield"] < 0.1
         self.table["hrc_shield"][bad] = np.nan
-        for pf in goes_r_channels:
-            self.table[f"g{pf}"][self.table[f"g{pf}"] <= 0.0] = np.nan
-        if self.start.secs < CxoTime("2020:237:03:45:19").secs:
-            msid = fetch.MSID("2shldart", self.start, self.stop)
-            if msid.times.size != 0:
-                shield1 = np.interp(self.times.secs, msid.times, msid.vals/256)
-                self.table["2shldart"] = shield1
-
-    def _get_txings(self, txings_files):
-        t = vstack([ascii.read(f"/data/acis/txings/{fn}", names=txings_cols)
+        #for pf in goes_r_channels:
+        #    self.table[f"g{pf}"][self.table[f"g{pf}"] <= 0.0] = np.nan
+        msids = fetch.MSIDset(["2shldart", "2shldbrt"], self.start, self.stop)
+        if msids["2shldart"].times.size != 0:
+            shield1 = np.interp(self.times.secs, msids["2shldart"].times, msids["2shldart"].vals/256)
+            self.table["2shldart"] = shield1
+        if msids["2shldbrt"].times.size != 0:
+            shield2 = np.interp(self.times.secs, msids["2shldbrt"].times, msids["2shldbrt"].vals/256)
+            self.table["2shldbrt"] = shield2
+    
+    def _get_goes_r(self):
+        pass
+        
+    def _find_txings_files(self):
+        txings_files = []
+        fns = [str(fn) for fn in Path(txings_data_dir).glob("acis*.txt")]
+        fns.sort(key=lambda x:f"{x[4:].split('.')[0].zfill(4)}")
+        for fn in fns:
+            with open(fn, "r") as f:
+                lines = list(f.readlines())
+                tstartf, tstopf = convert_txings_date([lines[0].split()[2],
+                                                       lines[-1].split()[2]])
+                if tstartf < self.stop.secs and tstopf > self.start.secs:
+                    txings_files.append(fn)
+        return txings_files
+    
+    def _get_txings(self):
+        txings_files = self._find_txings_files()
+        t = vstack([ascii.read(fn, names=txings_cols)
                     for fn in txings_files])
         times = convert_txings_date(t["date"].data)
         idxs = (times > self.start.secs) & (times < self.stop.secs)
@@ -173,6 +236,14 @@ class SolarWind:
 
     def __getitem__(self, item):
         return self.table[item]
+
+    def generate_slopes(self):
+        self.table["ace_soft_slope"] = find_index(self, p_emid[:-1],
+                                                  ["p1", "p3", "p5"])
+        self.table["ace_hard_slope"] = find_index(self, p_emid[1:],
+                                                  ["p3", "p5", "p7"])
+        self.table["goes_soft_slope"] = find_index(self, e_goes_r[:4],
+                                                   ["gp1", "gp2a", "gp2b", "gp3"])
 
     def _plot_rzs(self, ax):
         t = np.linspace(self.times.secs[0], self.times.secs[-1], 1000)
@@ -241,16 +312,31 @@ class SolarWind:
             self._plot_rzs(dp.ax)
             return dp
 
+    def _plot_index(self, plot=None):
+        if "ace_soft_slope" not in self.table.colnames:
+            self.generate_slopes()
+        dp = CustomDatePlot(self.times, self.table["ace_soft_slope"], label="ACE P1-P5", plot=plot)
+        CustomDatePlot(self.times, self.table["ace_hard_slope"], plot=dp, label="ACE P3-P7")
+        CustomDatePlot(self.times, self.table["goes_soft_slope"], plot=dp, label="GOES P1-P3")
+        dp.set_ylabel("Spectral Index")
+        dp.set_legend()
+        self._plot_rzs(dp.ax)
+        return dp 
+
+    def plot_index(self):
+        fig, ax = plt.subplots(figsize=(11, 6.5))
+        plot1 = DummyDatePlot(fig, ax, [], None, [])
+        return self._plot_index(plot=plot1)
+
     def plot_proton_spectra(self, times):
         spectrum_colors = ["tab:purple", "tab:brown", "tab:pink",
                            "tab:gray", "tab:olive", "tab:cyan", "lime"]
         times = CxoTime(times)
-        e = 0.5*p_ebins.sum(axis=1)
         fig, (ax1, ax2) = plt.subplots(figsize=(20,10), ncols=2)
         for i, time in enumerate(times):
             idx = np.searchsorted(self.times.secs, time.secs)
             row = self.table[idx]
-            ax1.plot(e, [row["p1"], row["p3"], row["p5"], row["p7"]], 'x-', lw=2,
+            ax1.plot(p_emid, [row["p1"], row["p3"], row["p5"], row["p7"]], 'x-', lw=2,
                      label=time.yday, color=spectrum_colors[i], markersize=10, mew=3)
         ax1.legend(fontsize=16)
         ax1.set_xlabel("E (keV)", fontsize=18)
@@ -272,7 +358,7 @@ class SolarWind:
         ax3 = ax1.twiny()
         ax3.set_xlim(*ax1.get_xlim())
         ax3.set_xscale('log')
-        ax3.set_xticks(e)
+        ax3.set_xticks(p_emid)
         ax3.set_xticklabels(["P1", "P3", "P5", "P7"])
         ax3.tick_params(which='major', width=2, length=6, labelsize=18)
         return fig
@@ -289,13 +375,14 @@ class SolarWind:
         dp.set_yscale("log")
         dp.set_ylabel("Counts")
         dp.set_legend(loc='upper left', fontsize=14)
-        dp.set_ylim(0.5*np.nanmin(h_all), 250.0)
+        dp.set_ylim(0.5*np.nanmin(h_all), max(1.5*np.nanmax(h_all), 300))
         dp.add_hline(235.0, ls='--', lw=2, color="C3")
         self._plot_rzs(dp.ax)
         return dp
 
     def _plot_txings(self, fig, ax):
         get_labels = True
+        self.rates = defaultdict(list)
         for i, o in enumerate(self.obsids):
             if o.obsid > 39999:
                 continue
@@ -314,6 +401,9 @@ class SolarWind:
                                    label=labels[2], fig=fig, ax=ax)
             _, _, _ = plot_cxctime(t["time"], t["bi_rate_limit"]*0.01, color="C1",
                                    label=labels[3], fig=fig, ax=ax)
+            for k in ["time", "fi_rate", "bi_rate", "fi_rate_limit", "bi_rate_limit"]:
+                self.rates[k].extend(t[k])
+
         ax.set_yscale("log")
         ax.set_ylim(0.1, 100)
         ax.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
@@ -392,7 +482,7 @@ class SolarWind:
                            length=4, labelsize=18)
         if xlim is not None:
             ax.set_xlim(*xlim)
-        return fig 
+        return fig
 
     def scatter_plots(self):
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
