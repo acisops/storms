@@ -14,12 +14,8 @@ from astropy.table import Table
 
 
 def plot_shutdown(sw, shutdown, startup, ax):
-    t = np.linspace(sw.times.secs[0], sw.times.secs[-1], 1000)
-    tplot = CxoTime(t).plot_date
-    in_evt = (t >= shutdown.secs) & (t <= startup.secs)
-    ax.fill_between(tplot, 0, 1, where=in_evt,
-                    transform=ax.get_xaxis_transform(),
-                    color="C3", alpha=0.25, zorder=-10)
+    ax.axvspan(shutdown.datetime, startup.datetime,
+               color="C3", alpha=0.25, zorder=-10)
     ymin = ax.get_ylim()[0]
     ax.text(shutdown.plot_date + 0.1, 2.0 * ymin, "SHUTDOWN",
             fontsize=15, rotation="vertical")
@@ -79,22 +75,24 @@ def main(fn):
         if inputs["shutdown"] == "YES":
             plot_shutdown(sw, shutdown, startup, fig.axes[1])
         xlim2 = [CxoTime(times[0]-0.5*86400.0).plot_date,
-                CxoTime(times[-1]+0.5*86400.0).plot_date]
+                 CxoTime(times[-1]+0.5*86400.0).plot_date]
         fig.axes[1].set_xlim(*xlim2)
         fig.savefig(storm_dir / "proton_spectra.png")
 
     fig, fi_rate = sw.scatter_plots()
     if inputs["shutdown"] == "YES":
-        idx = np.searchsorted(sw.times, shutdown.secs)-1
-        row = sw.table[idx]
-        sw.table.meta["comments"] = [f"idx = {idx}"]
-        fig.axes[0].plot(row["p3"], row["hrc_shield"], 'x', mew=3, ms=20,
+        p3_idx = np.searchsorted(sw.ace_times.secs, shutdown.secs)-1
+        hrc_idx = np.searchsorted(sw.hrc_times.secs, shutdown.secs)-1
+        fig.axes[0].plot(sw["p3"], sw["hrc_shield"], 'x', mew=3, ms=20,
                          color='C3', label="Shutdown")
         fig.axes[0].legend(fontsize=18)
         fig.axes[1].plot(row["hrc_shield"], fi_rate[idx], 'x', mew=3, ms=20, color='C3')
     fig.savefig(storm_dir / "scatter_plots.png")
-    sw.table["times"] = sw.times.secs
-    sw.table["fi_rate"] = fi_rate
+    sw.table["ace_times"] = sw.ace_times.secs
+    if sw.goes_r_times:
+        sw.table["goes_r_times"] = sw.goes_r_times.secs
+    if sw.hrc_times:
+        sw.table["hrc_times"] = sw.hrc_times.secs
     sw.table.write(f"{str(fn)[:-4]}ecsv", format="ascii.ecsv", overwrite=True)
 
     txingst = Table(sw.rates)
