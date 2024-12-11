@@ -283,15 +283,17 @@ class SolarWind:
 
     def _plot_comms(self, ax):
         if self.comms:
-            for comm in self.comms:
+            for i, comm in enumerate(self.comms):
+                label = "Comm" if i == 0 else None
                 ax.axvspan(CxoTime(comm[0]).datetime, CxoTime(comm[1]).datetime,
-                           color="dodgerblue", alpha=0.5)
+                           color="dodgerblue", alpha=0.5, label=label)
 
     def _plot_rzs(self, ax):
-        for radzone in self.rad_zones:
+        for i, radzone in enumerate(self.rad_zones):
+            label = "Rad Zone" if i == 0 else None
             ax.axvspan(CxoTime(radzone.tstart).datetime, 
                        CxoTime(radzone.tstop).datetime,
-                       color="mediumpurple", alpha=0.333333)
+                       color="mediumpurple", label=label, alpha=0.333333)
 
     def plot_ace_e(self):
         return self._plot_ace_e()
@@ -302,22 +304,24 @@ class SolarWind:
         de_all = np.concatenate([self.ace_table[f"de{i}"] for i in [1, 4]])
         dp.set_yscale("log")
         dp.set_ylabel("ACE Electron Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
-        dp.set_legend(loc='upper left', fontsize=14)
         dp.set_ylim(0.5*np.nanmin(de_all), 1.5*np.nanmax(de_all))
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
+        dp.set_legend(loc='upper left', fontsize=14)
         return dp
 
     def plot_ace_p(self):
         return self._plot_ace_p()
 
     def _plot_ace_p3(self, plot=None):
-        dp = CustomDatePlot(self.ace_times, self.ace_table["p3"], plot=plot, color="C1")
+        dp = CustomDatePlot(self.ace_times, self.ace_table["p3"], plot=plot, color="C1", 
+                            label="P3")
         dp.set_yscale("log")
         dp.set_ylabel("ACE P3 Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
         dp.set_ylim(0.5*np.nanmin(self.ace_table["p3"]), 1.5*np.nanmax(self.ace_table["p3"]))
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
+        dp.set_legend(loc='upper left', fontsize=14)
         return dp
 
     def plot_ace_p3(self):
@@ -331,10 +335,10 @@ class SolarWind:
         p_all = np.concatenate([self.ace_table[f"p{i}"] for i in [1, 3, 5, 7]])
         dp.set_yscale("log")
         dp.set_ylabel("ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
-        dp.set_legend(loc='upper left', fontsize=14)
         dp.set_ylim(0.5*np.nanmin(p_all), 1.5*np.nanmax(p_all))
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
+        dp.set_legend(loc='upper left', fontsize=14)
         return dp
 
     def _plot_goes_r(self, plot=None):
@@ -349,7 +353,6 @@ class SolarWind:
             maxes.append(np.nanmax(self.goes_r_table[pf]))
         dp.set_yscale("log")
         dp.set_ylabel("GOES Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
-        dp.set_legend(loc='upper left', fontsize=14)
         ymin = np.nanmin(mins)
         ymax = np.nanmin(maxes)
         if ymin is np.nan or ymax is np.nan:
@@ -358,6 +361,7 @@ class SolarWind:
             dp.set_ylim(0.5*np.nanmin(mins), 1.5*np.nanmax(maxes))
             self._plot_rzs(dp.ax)
             self._plot_comms(dp.ax)
+            dp.set_legend(loc='upper left', fontsize=14)
             return dp
 
     def _plot_index(self, plot=None):
@@ -367,9 +371,9 @@ class SolarWind:
         CustomDatePlot(self.ace_times, self.ace_table["ace_hard_slope"], plot=dp, label="ACE P3-P7")
         CustomDatePlot(self.goes_r_times, self.goes_r_table["goes_soft_slope"], plot=dp, label="GOES P1-P3")
         dp.set_ylabel("Spectral Index")
-        dp.set_legend()
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
+        dp.set_legend()
         return dp 
 
     def plot_index(self):
@@ -418,26 +422,26 @@ class SolarWind:
     def _plot_hrc(self, plot=None):
         dp = CustomDatePlot(self.hrc_times, self.hrc_table["hrc_shield"], label="GOES proxy", plot=plot)
         h_all = self.hrc_table["hrc_shield"]
-        if "2shldart" in self.hrc_table:
-            CustomDatePlot(self.hrc_times, self.hrc_table["2shldart"], plot=dp, label="HRC Shield Rate")
-            h_all = np.concatenate([h_all, self.hrc_table["2shldart"]])
+        #if "2shldart" in self.hrc_table and np.nansum(self.hrc_table["2shldart"]) > 0.0:
+        #    CustomDatePlot(self.hrc_times, self.hrc_table["2shldart"], plot=dp, label="HRC Shield Rate")
+        #    h_all = np.concatenate([h_all, self.hrc_table["2shldart"]])
         dp.set_yscale("log")
         dp.set_ylabel("HRC Proxy (counts)")
-        dp.set_legend(loc='upper left', fontsize=14)
         dp.set_ylim(0.5*np.nanmin(h_all), max(1.5*np.nanmax(h_all), 300))
         dp.add_hline(235.0, ls='--', lw=2, color="C3")
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
+        dp.set_legend(loc='upper left', fontsize=14)
         return dp
 
     def _plot_txings(self, plot=None):
         self.rates = defaultdict(list)
         first = True
         for i, o in enumerate(self.obsids):
-            if o.obsid > 39999:
+            if o.obsid > 39999 and o.obsid < 60000:
                 continue
             this_o = self.txings_data["obsid"] == o.obsid
-            print(i, o.obsid, this_o.sum())
+            #print(i, o.obsid, this_o.sum())
             if this_o.sum() == 0:
                 continue
             t = self.txings_data[this_o]
@@ -452,6 +456,7 @@ class SolarWind:
             first = False
         for k in self.rates:
             self.rates[k] = np.concatenate(self.rates[k])
+        #print(self.rates["fi_rate"])
         plot = CustomDatePlot(self.rates["times"], self.rates["fi_rate"]*0.01, 
                               fmt='.', label="FI Rate", color="C0", lw=0, plot=plot)
         CustomDatePlot(self.rates["times"], self.rates["bi_rate"]*0.01, 
