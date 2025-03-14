@@ -243,13 +243,13 @@ class SolarWind:
             self.hrc_table["2shldbrt"] = shield2
     
     def _get_goes_r(self):
-        t = Table.read("/data/acis/goes/goes_16.fits", format="fits")
+        t = Table.read("/data/acis/goes/goes_16_18.fits", format="fits")
         times = t["time"].data
         idxs = (times > self.start.secs) & (times < self.stop.secs)
         self.goes_r_times = CxoTime(times[idxs], format='secs')
         self.goes_r_table = Table()
         for k in goes_r_channels:
-            self.goes_r_table[k] = t[k][idxs,0]
+            self.goes_r_table[k] = t[f"{k}_g16"][idxs,0]
             
     def _find_txings_files(self):
         txings_files = []
