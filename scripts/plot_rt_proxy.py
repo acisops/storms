@@ -28,7 +28,7 @@ t_proxy = Table.read(p)
 
 times = Time(t_proxy["time"], format='cxcsec')
 
-sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True)
+sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True, get_ace=False)
 
 print(times[-1].yday)
 
@@ -42,7 +42,7 @@ ax.plot(times.datetime[idxs], fi_rate_limit[idxs], '.', label="Limit", color="C0
 ax.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', label="Data", color="C1")
 ax.set_xlabel("Date")
 ax.legend()
-ax.set_ylabel("ACIS Threshold Crossing Rate (cts/sec/row)")
+ax.set_ylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%j:%H:%M:%S'))
 fig.autofmt_xdate()
 ax.grid()
