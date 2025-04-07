@@ -44,7 +44,8 @@ def format_goes_proton_data(dat, start_time):
     for row in dat:
         if Time(row["time_tag"]).cxcsec-60 <= start_time:
             continue
-        out[row["time_tag"]][f"{row['channel'].upper()}_g{row['satellite']}_E"] = row["flux"]
+        satellite = 16 if row['satellite'] == 19 else row['satellite']
+        out[row["time_tag"]][f"{row['channel'].upper()}_g{satellite}_E"] = row["flux"]
         out[row["time_tag"]]["yaw_flip"] = row["yaw_flip"]
 
     if len(out.keys()) == 0:
