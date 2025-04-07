@@ -12,7 +12,7 @@ data_path = base_path / "txings_proxy/data"
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-overwrite_table = True
+overwrite_table = False
 
 x_factor = 10
 INPUT_LENGTH = 26
@@ -45,7 +45,7 @@ p = Path("/data/acis/txings/txings_proxy.fits")
 if p.exists() and not overwrite_table:
     t_exist = Table.read(p)
     start_time = t_exist["time"][-1]
-    use7d = False
+    use7d = True
 else:
     print("overwrite")
     t_exist = None
@@ -81,7 +81,6 @@ for col in t_goes.columns:
         prefix = col.split("_")[0]
         df[col] *= (goes_bands[prefix][1] - goes_bands[prefix][0])
 
-print(df.columns)
 X = np.array(df)
 X = scaler_x.transform(X)
  
