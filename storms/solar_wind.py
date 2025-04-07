@@ -145,12 +145,15 @@ class SolarWind:
 
     def __init__(self, start, stop, use_browse=False, get_txings=False,
                  get_goes=False, get_hrc=False, get_states=False, 
-                 get_comms=True):
+                 get_comms=True, get_ace=True):
         self.start = CxoTime(start)
         self.stop = CxoTime(stop)
         self.rad_zones = rad_zones.filter(self.start, self.stop)
         self.obsids = obsids.filter(self.start, self.stop)
-        self._get_ace(use_browse=use_browse)
+        if get_ace:
+            self._get_ace(use_browse=use_browse)
+        else:
+            self.ace_times = None
         if get_hrc:
             self._get_hrc()
         else:
