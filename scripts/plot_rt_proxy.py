@@ -57,5 +57,5 @@ for o in obsids.filter(start=times.yday[idxs][0], stop=(times[-1]+0.5*u.day).yda
 for rz in rad_zones.filter(start=times.yday[idxs][0], stop=(times[-1]+2*u.day).yday):
     ax.axvspan(CxoTime(rz.tstart).datetime, 
                CxoTime(rz.tstop).datetime,
-               color="mediumpurple", label=label, alpha=0.333333)
+               color="mediumpurple", alpha=0.333333)
 fig.savefig(out_path / "fi_rate_predict.png", bbox_inches='tight')
