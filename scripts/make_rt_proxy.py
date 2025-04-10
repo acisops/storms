@@ -97,9 +97,9 @@ y_inv_fi = []
 y_inv_bi = []
 for k in range(n_folds):
     model_fi = MLPModel().to(device)
-    model_fi.load_state_dict(torch.load(data_path / model_template.substitute(which="fi", fold=k)))
+    model_fi.load_state_dict(torch.load(data_path / model_template.substitute(which="fi", fold=k), map_location='cpu'))
     model_bi = MLPModel().to(device)
-    model_bi.load_state_dict(torch.load(data_path / model_template.substitute(which="bi", fold=k)))
+    model_bi.load_state_dict(torch.load(data_path / model_template.substitute(which="bi", fold=k), map_location='cpu'))
     with torch.no_grad():
         model_fi.eval()
         model_bi.eval()
