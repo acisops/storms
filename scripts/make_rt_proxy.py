@@ -4,6 +4,7 @@ from astropy.table import Table, vstack
 from storms.utils import base_path
 from storms.txings_proxy.utils import goes_bands, LogHyperbolicTangentScaler, transform_goes
 from storms.realtime import get_realtime_goes
+from string import Template
 
 from pathlib import Path
 import numpy as np
@@ -15,7 +16,7 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 overwrite_table = False
 
 x_factor = 10
-INPUT_LENGTH = 26
+INPUT_LENGTH = 24
 
 class MLPModel(nn.Module):
     def __init__(self):
@@ -36,10 +37,13 @@ class MLPModel(nn.Module):
         return self.model(x)
 
 
-means = np.load(data_path / "means.npz")
+means_fi = np.load(data_path / "means_fi_rate.npz")
+scaler_fi_x = LogHyperbolicTangentScaler(mean=means_fi["x"])
+scaler_fi_y = LogHyperbolicTangentScaler(mean=means_fi["y"])
 
-scaler_x = LogHyperbolicTangentScaler(mean=means["x"])
-scaler_y = LogHyperbolicTangentScaler(mean=means["y"])
+means_bi = np.load(data_path / "means_bi_rate.npz")
+scaler_bi_x = LogHyperbolicTangentScaler(mean=means_bi["x"])
+scaler_bi_y = LogHyperbolicTangentScaler(mean=means_bi["y"])
 
 p = Path("/data/acis/txings/txings_proxy.fits")
 if p.exists() and not overwrite_table:
@@ -67,35 +71,43 @@ t_goes = t_goes[good]
 
 #use_chans = list(goes_bands.keys())
 #use_cols = [f"{chan}_g{source}_E" for chan in use_chans for source in [16, 18]]
-use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
+use_cols = ['P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
        'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
-       'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
+       'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P2A_g18_E',
        'P2B_g18_E', 'P3_g18_E', 'P4_g18_E', 'P5_g18_E', 'P6_g18_E', 'P7_g18_E',
        'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E']
 df = t_goes[use_cols].to_pandas()
 
 # Convert the specifix flux to total flux in the band for each channel by multiplying
 # by the channel width
-for col in t_goes.columns:
+for col in df.columns:
     if col.startswith("P"):
         prefix = col.split("_")[0]
         df[col] *= (goes_bands[prefix][1] - goes_bands[prefix][0])
 
 X = np.array(df)
-X = scaler_x.transform(X)
  
 n_folds = 10
 
-y_inv = []
-for k in range(n_folds):
-    MODEL_NAME = f"input_type_All_P_direction_East_fi_rate_k{k}_10x_model_1000_learning_rate_max_stop_50_DATA_AUG_1x"
-    model = MLPModel().to(device)
-    model.load_state_dict(torch.load(data_path / f"{MODEL_NAME}_min_epoch"))
-    with torch.no_grad():
-        model.eval()
-        xx = torch.from_numpy(X).to(device, torch.float32)
-        yy = model(xx).squeeze().cpu().detach().numpy()
-    y_inv.append(scaler_y.inverse_transform(yy))
+xx_fi = torch.from_numpy(scaler_fi_x.transform(X)).to(device, torch.float32)
+xx_bi = torch.from_numpy(scaler_bi_x.transform(X)).to(device, torch.float32)
 
-t_goes["fi_rate_predict"] = np.mean(y_inv, axis=0)
+model_template = Template("${which}_rate_k${fold}_10x_model_1000_learning_rate_max_stop_50_DATA_AUG_1x_min_epoch")
+y_inv_fi = []
+y_inv_bi = []
+for k in range(n_folds):
+    model_fi = MLPModel().to(device)
+    model_fi.load_state_dict(torch.load(data_path / model_template.substitute(which="fi", fold=k)))
+    model_bi = MLPModel().to(device)
+    model_bi.load_state_dict(torch.load(data_path / model_template.substitute(which="bi", fold=k)))
+    with torch.no_grad():
+        model_fi.eval()
+        model_bi.eval()
+        yy_fi = model_fi(xx_fi).squeeze().cpu().detach().numpy()
+        yy_bi = model_bi(xx_bi).squeeze().cpu().detach().numpy()
+    y_inv_fi.append(scaler_fi_y.inverse_transform(yy_fi))
+    y_inv_bi.append(scaler_bi_y.inverse_transform(yy_bi))
+
+t_goes["fi_rate_predict"] = np.mean(y_inv_fi, axis=0)
+t_goes["bi_rate_predict"] = np.mean(y_inv_bi, axis=0)
 t_goes.write(p, overwrite=True)
