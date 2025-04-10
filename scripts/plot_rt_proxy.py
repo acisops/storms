@@ -40,34 +40,45 @@ idxs = times >= times[-1] - 3.0*u.day
 fi_rate_limit = 320.0*np.ones_like(times.cxcsec)
 bi_rate_limit = 20.0*np.ones_like(times.cxcsec)
 
-fig, ax = plt.subplots(figsize=(16, 10))
-ax.plot(times.datetime[idxs], t_proxy["fi_rate_predict"][idxs], 'x', ms=8, mew=3, label="FI Prediction", color="C0")
-ax.plot(times.datetime[idxs], fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
-ax.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', ms=6, label="FI Data", color="C1")
-ax.plot(times.datetime[idxs], t_proxy["bi_rate_predict"][idxs], 'x', ms=8, mew=3, label="FI Prediction", color="C2")
-ax.plot(times.datetime[idxs], bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
-ax.plot(sw.txings_times.datetime, sw.txings_data["bi_rate"], '.', ms=6, label="BI Data", color="C3")
-ax.set_xlabel("Date")
-ax.legend(fontsize=16, loc='center right')
-ax.set_ylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%j:%H:%M:%S'))
+fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 13), constrained_layout=True)
+
+ax1.plot(times.datetime[idxs], t_proxy["fi_rate_predict"][idxs], 'x', ms=8, mew=3, label="FI Prediction", color="C0")
+ax1.plot(times.datetime[idxs], fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
+ax1.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', ms=6, label="FI Data", color="C1")
+
+ax2.plot(times.datetime[idxs], t_proxy["bi_rate_predict"][idxs], 'x', ms=8, mew=3, label="BI Prediction", color="C2")
+ax2.plot(times.datetime[idxs], bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
+ax2.plot(sw.txings_times.datetime, sw.txings_data["bi_rate"], '.', ms=6, label="BI Data", color="C3")
+
+for ax in [ax1, ax2]:
+    ax.grid()
+    ax.set_xlim(times.datetime[idxs][0], times[-1].datetime)
+    ax.set_xlabel("Date")
+    ax.legend(fontsize=16, loc='upper left')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%j:%H"))
+
 fig.autofmt_xdate()
-ax.grid()
-ax.set_xlim(times.datetime[idxs][0], times[-1].datetime)
-ax.set_ylim(7, 400.0)
-ax.set_yscale("log")
+
+ax1.set_ylim(80, 420.0)
+ax2.set_ylim(5, 35.0)
+
+fig.supylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
 
 states = get_states(start=times.yday[idxs][0], stop=times[-1].yday, 
                     merge_identical=True)
 oidxs = np.array(["obsid" in s for s in states["trans_keys"]])
 obsids = states["obsid"][oidxs]
 tstart = CxoTime(states["tstart"][oidxs])
+
 for o, t in zip(obsids, tstart):
     if t >= times.datetime[idxs][0] and o <= 39000:
-        ax.text(t.datetime, 8, str(o), color="C3", rotation=90, 
-                ha='center', va='bottom', fontsize=14, zorder=-100)
+        for ax, ypos in zip([ax1, ax2], [100, 8]):
+            ax.text(t.datetime, ypos, str(o), color="C3", rotation=90, 
+                    ha='center', va='bottom', fontsize=14, zorder=-100)
 for rz in rad_zones.filter(start=times.yday[idxs][0], stop=(times[-1]+2*u.day).yday):
-    ax.axvspan(CxoTime(rz.tstart).datetime, 
-               CxoTime(rz.tstop).datetime,
-               color="mediumpurple", alpha=0.333333)
+    for ax in [ax1, ax2]:
+        ax.axvspan(CxoTime(rz.tstart).datetime, 
+                   CxoTime(rz.tstop).datetime,
+                   color="mediumpurple", alpha=0.333333)
+
 fig.savefig(out_path / "txings_proxy.png", bbox_inches='tight')
