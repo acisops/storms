@@ -5,6 +5,7 @@ from storms.utils import base_path
 from storms.txings_proxy.utils import goes_bands, LogHyperbolicTangentScaler, transform_goes
 from storms.realtime import get_realtime_goes
 from string import Template
+from scipy.ndimage import uniform_filter1d
 
 from pathlib import Path
 import numpy as np
@@ -16,7 +17,7 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 overwrite_table = False
 
 x_factor = 10
-INPUT_LENGTH = 24
+INPUT_LENGTH = 26
 
 class MLPModel(nn.Module):
     def __init__(self):
@@ -49,7 +50,7 @@ p = Path("/data/acis/txings/txings_proxy.fits")
 if p.exists() and not overwrite_table:
     t_exist = Table.read(p)
     start_time = t_exist["time"][-1]
-    use7d = True
+    use7d = False
 else:
     print("overwrite")
     t_exist = None
@@ -63,17 +64,32 @@ if t_exist is not None:
         t_goes = vstack([t_exist, t_goes])
 
 # Remove values that are less than or equal to zero
+"""
+p = Path("/data/acis/txings/txings_proxy2.fits")
+t = Table.read("/data/acis/goes/goes_16_18.fits")
+print(t.colnames)
+t_goes = Table()
+for col in t.colnames:
+    if col.startswith("P"):
+        t_goes[f"{col}_E"] = t[col][:, 0]
+t_goes["time"] = t["time"]  
+"""
+
+# Remove values that are less than zero
 good = np.ones(len(t_goes), dtype=bool)
 for col in t_goes.columns:
     if col.startswith("P"):
-        good &= t_goes[col] > 0.0
+        good &= t_goes[col] >= 0.0
 t_goes = t_goes[good]
+for col in t_goes.columns:
+    if col.startswith("P"):
+        t_goes[col] = uniform_filter1d(t_goes[col], 10, axis=0, mode="nearest")
 
 #use_chans = list(goes_bands.keys())
 #use_cols = [f"{chan}_g{source}_E" for chan in use_chans for source in [16, 18]]
-use_cols = ['P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
+use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
        'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
-       'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P2A_g18_E',
+       'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
        'P2B_g18_E', 'P3_g18_E', 'P4_g18_E', 'P5_g18_E', 'P6_g18_E', 'P7_g18_E',
        'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E']
 df = t_goes[use_cols].to_pandas()
