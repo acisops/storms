@@ -13,16 +13,13 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-import sphinx_bootstrap_theme
 
-html_theme = 'bootstrap'
-html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
+html_theme = 'pydata_sphinx_theme'
 
 html_theme_options = dict(
-    bootswatch_theme="spacelab",
-    navbar_sidebarrel=False,
-    globaltoc_depth=2,
-    body_max_width="none",
+    show_prev_next=False,
+    sidebar_includehidden=False,
+    navbar_center=[],
 )
 
 
