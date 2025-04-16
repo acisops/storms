@@ -6,3 +6,4 @@ doc/build
 .idea
 json/*.pdf
 json/*.png
+scripts/*.png

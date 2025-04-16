@@ -46,6 +46,7 @@ means_bi = np.load(data_path / "means_bi_rate.npz")
 scaler_bi_x = LogHyperbolicTangentScaler(mean=means_bi["x"])
 scaler_bi_y = LogHyperbolicTangentScaler(mean=means_bi["y"])
 
+
 p = Path("/data/acis/txings/txings_proxy.fits")
 if p.exists() and not overwrite_table:
     t_exist = Table.read(p)
@@ -63,7 +64,6 @@ if t_exist is not None:
     else:
         t_goes = vstack([t_exist, t_goes])
 
-# Remove values that are less than or equal to zero
 """
 p = Path("/data/acis/txings/txings_proxy2.fits")
 t = Table.read("/data/acis/goes/goes_16_18.fits")
@@ -85,8 +85,6 @@ for col in t_goes.columns:
     if col.startswith("P"):
         t_goes[col] = uniform_filter1d(t_goes[col], 10, axis=0, mode="nearest")
 
-#use_chans = list(goes_bands.keys())
-#use_cols = [f"{chan}_g{source}_E" for chan in use_chans for source in [16, 18]]
 use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
        'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
        'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
