@@ -12,6 +12,8 @@ import numpy as np
 import astropy.units as u
 
 parser = argparse.ArgumentParser(description="Plot the txings GOES proxy.")
+
+parser.add_argument("--infile", type=str, default="/data/acis/txings/txings_proxy.fits", help="The file containing the proxy to read.")
 parser.add_argument("--out_path", type=str, help="The location to write the image.")
 parser.add_argument("--days", type=float, default=3.0, help="The number of days to show on the plot.")
 args = parser.parse_args()
@@ -26,7 +28,8 @@ plt.rc("xtick.minor", size=3, width=2)
 plt.rc("ytick.minor", size=3, width=2)
 
 
-p = Path("/data/acis/txings/txings_proxy.fits")
+p = Path(args.infile)
+
 t_proxy = Table.read(p)
 
 times = Time(t_proxy["time"], format='cxcsec')
@@ -35,18 +38,18 @@ sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True, get_ace=False)
 
 print(times[-1].yday)
 
-idxs = times >= times[-1] - 3.0*u.day
+idxs = times >= times[-1] - args.days*u.day
 
 fi_rate_limit = 320.0*np.ones_like(times.cxcsec)
 bi_rate_limit = 20.0*np.ones_like(times.cxcsec)
 
 fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 13), constrained_layout=True)
 
-ax1.plot(times.datetime[idxs], t_proxy["fi_rate_predict"][idxs], 'x', ms=8, mew=3, label="FI Prediction", color="C0")
+ax1.plot(times.datetime[idxs], t_proxy["fi_rate_predict"][idxs], lw=3, label="FI Prediction", color="C0")
 ax1.plot(times.datetime[idxs], fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
 ax1.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', ms=6, label="FI Data", color="C1")
 
-ax2.plot(times.datetime[idxs], t_proxy["bi_rate_predict"][idxs], 'x', ms=8, mew=3, label="BI Prediction", color="C2")
+ax2.plot(times.datetime[idxs], t_proxy["bi_rate_predict"][idxs], lw=3, label="BI Prediction", color="C2")
 ax2.plot(times.datetime[idxs], bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
 ax2.plot(sw.txings_times.datetime, sw.txings_data["bi_rate"], '.', ms=6, label="BI Data", color="C3")
 
