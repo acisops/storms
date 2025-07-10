@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+import torch.nn as nn
 
 
 goes_path = Path("/data/acis/goes")
@@ -54,3 +55,22 @@ class LogHyperbolicTangentScaler:
     def fit_transform(self, x):
         self.fit(x)
         return self.transform(x)
+    
+
+class MLPModel(nn.Module):
+    def __init__(self, input_length, x_factor):
+        super(MLPModel, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_length, input_length*2*x_factor),
+            nn.LeakyReLU(),
+            nn.Linear(input_length*2*x_factor, input_length*4*x_factor),
+            nn.LeakyReLU(),
+            nn.Linear(input_length*4*x_factor, input_length*2*x_factor),
+            nn.LeakyReLU(),
+            nn.Linear(input_length*2*x_factor, input_length*x_factor),
+            nn.LeakyReLU(),
+            nn.Linear(input_length*x_factor, 1)
+        )
+
+    def forward(self, x):
+        return self.model(x)
