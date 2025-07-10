@@ -6,6 +6,18 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from pathlib import Path 
+
+
+# Verify MPS support
+if torch.backends.mps.is_available():
+    print("M1 GPU is available and PyTorch is configured to use MPS!")
+else:
+    print("MPS backend is not available. Check your setup.")
+# Need to use "mps", cpu only allows for tiny models!
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+base_path = Path(__file__).parent
 
 
 def find_near_detections(y_data, limits, tolerance=-10):
@@ -30,92 +42,30 @@ def train_val_split(X, y, index_11_fold, k):
     return X_train, y_train, X_val, y_val, val_index, train_index
 
 
-rng = np.random.default_rng(12345)
-# Verify MPS support
-if torch.backends.mps.is_available():
-    print("M1 GPU is available and PyTorch is configured to use MPS!")
-else:
-    print("MPS backend is not available. Check your setup.")
-# Need to use "mps", cpu only allows for tiny models!
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
-# Which k fold to start with
-K_START = 0
-
-# Which k fold to stop before
-K_STOP = 10
-
-x_factor = 10
-data_increase_factor = 1
+def batch_retriever(index, max_batch_index, batch_size):
+    if index == max_batch_index:
+        return index * batch_size, -1
+    else:
+        return index * batch_size, index * batch_size + batch_size
 
 
-# There are FI and BI rates for txings, here I'm just choosing the FI rate
-# "fi_rate", "bi_rate"
-which_rate = "bi_rate"
-
-# Need New Index fro k folds?
-NEW_INDEX = True
-
-# Load the FITS table which includes the txings data and the GOES proton data
-t = Table.read(f"./{which_rate}_table.fits", format="fits")
-
-# Figure out what columns from this table we need
-add_cols = ["time", which_rate, "obsid", which_rate + "_limit"]
-drop_chans = []
-
-for col in t.colnames:
-    # The data includes east and west columns, I am leaving the western data out
-    # because it does not show up in real-time telemetry
-    prefix = col.split("_")[0]
-    print(prefix)
-    if col.endswith("W") or prefix in drop_chans:
-        continue
-    if prefix.startswith("P"):
-        add_cols.append(col)
-
-print(add_cols)
-
-# Create a new table
-t_new = transform_goes(t[add_cols])
-df = t_new.to_pandas()
-
-# Get the labels and features.
-X = df.drop([which_rate, which_rate + "_limit", "obsid", "time"], axis=1)
-y = df[which_rate]
-
-X_index = np.array(X.index, dtype=int)
-
-if NEW_INDEX:
-    index_11_fold = X_index % 11
-    rng.shuffle(index_11_fold)
-    np.save(
-        "./Indices/" + which_rate + "_k_fold_validation_index.npy",
-        index_11_fold,
-    )
-else:
-    index_11_fold = np.load(
-        "./Indices/" + which_rate + "_k_fold_validation_index.npy"
-    )
-
-X_data = np.array(X)
-y_data = np.array(y)
-
-INPUT_LENGTH = np.shape(X_data)[1]
-
-# use this to modify dataset
-near_detections_ids = find_near_detections(y_data, df[which_rate + "_limit"])
-
-
-# function that increases the number of ~limit detections and generally expands data set
-# Use only for training and validation
+# function that increases the number of ~limit detections and generally 
+# expands data set. Use only for training and validation.
 def data_augmentation(
     X_data,
     y_data,
+    y_limit,
     data_index,
-    near_detections_ids=near_detections_ids,
+    near_detections_ids=None,
     epsilon=1e-4,
-    X_INCREASE=data_increase_factor,
+    x_increase=1,
 ):
+    input_length = X_data.shape[1]
+
+    if near_detections_ids is None:
+        # use this to modify dataset
+        near_detections_ids = find_near_detections(y_data, y_limit)
+
     # near_in_set = near or actual detections in data set
     # data_ids = location of intersection in data_index -> you need this to take data from train_set
     # id_ids = location of intersection in near_detections_ids - > don't need this
@@ -124,82 +74,77 @@ def data_augmentation(
     )
 
     # number of additional near/actual detections needed to make data set balanced
-    N_balancer = len(data_index) - (2 * len(near_in_set))
-    N_aug_tot = N_balancer + len(data_index)
+    n_near_in_set = len(near_in_set)
+    n_data_index = len(data_index)
+    N_balancer = n_data_index - 2 * n_near_in_set
+    N_aug_tot = N_balancer + n_data_index
     print(
-        len(near_in_set),
+        n_near_in_set,
         N_balancer,
         N_aug_tot,
-        (len(near_in_set) + N_balancer) / N_aug_tot,
+        (n_near_in_set + N_balancer) / N_aug_tot,
     )
 
     # randomly select that many from available set
     aug_data_ids = rng.choice(data_ids, size=N_balancer)
 
-    if X_INCREASE == 1:
+    if x_increase == 1:
         # initialize new arrays
-        X_aug_data = np.empty((N_aug_tot, INPUT_LENGTH))
-        y_aug_data = np.empty((N_aug_tot))
+        X_aug_data = np.empty((N_aug_tot, input_length))
+        y_aug_data = np.empty(N_aug_tot)
 
         # create new dataset index array
-        data_index_aug = np.empty((N_aug_tot), dtype=int)
-        data_index_aug[: len(data_index)] = data_index * 1
-        data_index_aug[len(data_index) :] = data_index[aug_data_ids]
+        data_index_aug = np.empty(N_aug_tot, dtype=int)
+        data_index_aug[:n_data_index] = data_index
+        data_index_aug[n_data_index:] = data_index[aug_data_ids]
 
         # copy old data into new arrays
-        X_aug_data[: len(data_index)] = 1.0 * X_data
-        y_aug_data[: len(data_index)] = 1.0 * y_data
+        X_aug_data[:n_data_index] = X_data.copy()
+        y_aug_data[:n_data_index] = y_data.copy()
 
         # add new data into new arrays
-        X_aug_data[len(data_index) :] = X_data[aug_data_ids] + (
-            epsilon * rng.normal(size=(N_balancer, INPUT_LENGTH))
+        X_aug_data[n_data_index:] = X_data[aug_data_ids] + (
+            epsilon * rng.normal(size=(N_balancer, input_length))
         )
-        y_aug_data[len(data_index) :] = y_data[aug_data_ids] + (
+        y_aug_data[n_data_index:] = y_data[aug_data_ids] + (
             epsilon * rng.normal(size=N_balancer)
         )
     else:
         # initialize new arrays
-        X_aug_data = np.empty((X_INCREASE * N_aug_tot, INPUT_LENGTH))
-        y_aug_data = np.empty((X_INCREASE * N_aug_tot))
+        X_aug_data = np.empty((x_increase * N_aug_tot, input_length))
+        y_aug_data = np.empty(x_increase * N_aug_tot)
 
-        X_aug_data_xth = np.empty((N_aug_tot, INPUT_LENGTH))
-        y_aug_data_xth = np.empty((N_aug_tot))
+        X_aug_data_xth = np.empty((N_aug_tot, input_length))
+        y_aug_data_xth = np.empty(N_aug_tot)
 
         # create new dataset index array
-        data_index_aug = np.empty((X_INCREASE * N_aug_tot), dtype=int)
-        data_index_aug_xth = np.empty((N_aug_tot), dtype=int)
-        data_index_aug_xth[: len(data_index)] = data_index * 1
-        data_index_aug_xth[len(data_index) :] = data_index[aug_data_ids]
+        data_index_aug = np.empty(x_increase * N_aug_tot, dtype=int)
+        data_index_aug_xth = np.empty(N_aug_tot, dtype=int)
+        data_index_aug_xth[:n_data_index] = data_index
+        data_index_aug_xth[n_data_index:] = data_index[aug_data_ids]
 
         # copy old data into new arrays
-        X_aug_data_xth[: len(data_index)] = 1.0 * X_data
-        y_aug_data_xth[: len(data_index)] = 1.0 * y_data
+        X_aug_data_xth[:n_data_index] = X_data.copy()
+        y_aug_data_xth[:n_data_index] = y_data.copy()
 
         # add new data into new arrays
-        X_aug_data_xth[len(data_index) :] = X_data[aug_data_ids] + (
-            epsilon * rng.normal(size=(N_balancer, INPUT_LENGTH))
+        X_aug_data_xth[n_data_index:] = X_data[aug_data_ids] + (
+            epsilon * rng.normal(size=(N_balancer, input_length))
         )
-        y_aug_data_xth[len(data_index) :] = y_data[aug_data_ids] + (
+        y_aug_data_xth[n_data_index:] = y_data[aug_data_ids] + (
             epsilon * rng.normal(size=N_balancer)
         )
 
-        for i in range(X_INCREASE):
+        for i in range(x_increase):
             data_index_aug[i * N_aug_tot : (i + 1) * N_aug_tot] = data_index_aug_xth
             X_aug_data[i * N_aug_tot : (i + 1) * N_aug_tot] = X_aug_data_xth + (
-                epsilon * rng.normal(size=(N_aug_tot, INPUT_LENGTH))
+                epsilon * rng.normal(size=(N_aug_tot, input_length))
             )
             y_aug_data[i * N_aug_tot : (i + 1) * N_aug_tot] = y_aug_data_xth + (
                 epsilon * rng.normal(size=N_aug_tot)
             )
 
     return X_aug_data, y_aug_data, data_index_aug
-
-
-def batch_retriever(index, max_batch_index, batch_size):
-    if index == max_batch_index:
-        return index * batch_size, -1
-    else:
-        return index * batch_size, (index * batch_size) + batch_size
 
 
 def limit_testing(set_index, true_y, pred_y, limits):
@@ -234,7 +179,7 @@ def limit_testing(set_index, true_y, pred_y, limits):
 
 
 def training_loop(
-    MODEL_NAME,
+    model_name,
     model,
     device,
     X_train,
@@ -260,25 +205,17 @@ def training_loop(
     test_length,
     max_count,
 ):
+
     start = time.time()
-    print(MODEL_NAME, " training start")
-    FIRST = True
+    print(model_name, " training start")
     val_min = 1e4
-    initial_epoch = 0
     last_min_epoch = 0
-
     epochs = 100000
-
     count = 0
-    IN = False
 
     train_loss = []
     val_loss = []
     test_loss = []
-
-    train_mae = []
-    val_mae = []
-    test_mae = []
 
     print()
     for k in range(epochs + 1):
@@ -388,51 +325,78 @@ def training_loop(
         val_test = val_loss[k]
         if val_test < val_min:
             val_min = val_test
-            file_name = "./Models/" + MODEL_NAME + "_min_epoch"
+            file_name = base_path / f"Models/{model_name}_min_epoch"
             torch.save(model.state_dict(), file_name)
             last_min_epoch = k + 1
             count = 0
         elif count > max_count:
             print("Training Stopped by max_count trigger")
-            print("Training Ended at Epoch " + str(k + 1))
+            print(f"Training Ended at Epoch {k + 1}")
             break
         else:
             count += 1
         if (time.time() - start) / 3600 > 50:
             print("Training Ended Early for Time")
-            print("Training Ended at Epoch " + str(k + 1))
+            print(f"Training Ended at Epoch {k + 1}")
             break
-    ###############################################
-    ### PLOT AND SAVE EPOCHS
-    ###############################################
-    plt.figure(figsize=(30, 30))
-    plt.title("Loss vs Epoch", fontsize=15)
-    plt.plot(np.arange(len(train_loss)), train_loss, color="C0")
-    plt.plot(np.arange(len(train_loss)), val_loss, color="C0", linestyle="dashed")
-    plt.plot(np.arange(len(train_loss)), test_loss, color="C0", linestyle="dotted")
-    plt.yscale("log")
-    plt.legend(labels=["train_mse", "val_mse", "test_mse"], fontsize=15)
-    plt.xticks(fontsize=15)
-    plt.yticks(fontsize=15)
-    plt.xlabel("Epochs", fontsize=15)
-    plt.ylabel("Loss", fontsize=15)
-    #plt.show()
-    plt.savefig("./Plots/" + MODEL_NAME + "epochs.png", bbox_inches="tight")
-    plt.close()
-    ###############################################
-    ###############################################
-    ###############################################
+
+    # Plot and save epochs
+    fig, ax = plt.subplots(figsize=(30, 30))
+    ax.plot(np.arange(len(train_loss)), train_loss, color="C0")
+    ax.plot(np.arange(len(train_loss)), val_loss, color="C0", linestyle="dashed")
+    ax.plot(np.arange(len(train_loss)), test_loss, color="C0", linestyle="dotted")
+    ax.set_yscale("log")
+    ax.set_title("Loss vs Epoch", fontsize=15)
+    ax.legend(labels=["train_mse", "val_mse", "test_mse"], fontsize=15)
+    ax.tick_params(fontsize=15)
+    ax.set_xlabel("Epochs", fontsize=15)
+    ax.set_ylabel("Loss", fontsize=15)
+    fig.savefig(base_path / f"Plots/{model_name}_epochs.png", bbox_inches="tight")
 
 
 def k_fold_training(
-    X_data,
-    y_data,
-    index_11_fold,
+    df,
     which_rate,
+    new_index=True, # Need new index for k-folds?
     lr_factor=1e3,
     max_count=50,
     batch_size=32,
+    x_factor=10,
+    data_increase_factor=1,
+    rng=None,
 ):
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    # Which k-folds to start and stop with
+    k_start = 0
+    k_stop = 10
+
+    # Get the labels and features.
+    X = df.drop([which_rate, f"{which_rate}_limit", "obsid", "time"], axis=1)
+    y = df[which_rate]
+    y_limit = df[f"{which_rate}_limit"]
+
+    X_index = np.array(X.index, dtype=int)
+
+    if new_index:
+        index_11_fold = X_index % 11
+        rng.shuffle(index_11_fold)
+        np.save(
+            base_path / f"Indices/{which_rate}_k_fold_validation_index.npy",
+            index_11_fold,
+        )
+    else:
+        index_11_fold = np.load(
+            base_path / f"Indices/{which_rate}_k_fold_validation_index.npy",
+        )
+
+    X_data = np.array(X)
+    y_data = np.array(y)
+
+    input_length = X_data.shape[1]
+
     lr = 1e-2 / lr_factor
 
     scaler_x = LogHyperbolicTangentScaler()
@@ -444,24 +408,11 @@ def k_fold_training(
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
 
-    for k in range(K_START, K_STOP):
-        MODEL_NAME = (
-            which_rate
-            + "_k"
-            + str(k)
-            + "_"
-            + str(x_factor)
-            + "x_model_"
-            + str(int(lr_factor))
-            + "_learning_rate_max_stop_"
-            + str(max_count)
-            + "_DATA_AUG_"
-            + str(data_increase_factor)
-            + "x"
-        )
+    for k in range(k_start, k_stop):
+        model_name = f"{which_rate}_k{k}_{x_factor}x_model_{int(lr_factor)}_learning_rate_max_stop_{max_count}_DATA_AUG_{data_increase_factor}x"
 
         # Initialize the model
-        model = MLPModel(INPUT_LENGTH, x_factor).to(device)
+        model = MLPModel(input_length, x_factor).to(device)
         criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -469,8 +420,8 @@ def k_fold_training(
             X_data_norm, y_data_norm, index_11_fold, k
         )
 
-        X_train, y_train, train_index = data_augmentation(X_train, y_train, train_index)
-        X_val, y_val, val_index = data_augmentation(X_val, y_val, val_index)
+        X_train, y_train, train_index = data_augmentation(X_train, y_train, y_limit, train_index, x_increase=data_increase_factor)
+        X_val, y_val, val_index = data_augmentation(X_val, y_val, y_limit, val_index, x_increase=data_increase_factor)
 
         train_length = len(X_train)
         val_length = len(X_val)
@@ -489,7 +440,7 @@ def k_fold_training(
 
         # train model
         training_loop(
-            MODEL_NAME,
+            model_name,
             model,
             device,
             X_train,
@@ -516,12 +467,12 @@ def k_fold_training(
             max_count,
         )
 
-        model.load_state_dict(torch.load("./Models/" + MODEL_NAME + "_min_epoch"))
+        model.load_state_dict(torch.load(base_path / f"Models/{model_name}_min_epoch"))
 
         # begin analysis of trained model
-        y_train_pred = np.empty(np.shape(y_train))
-        y_val_pred = np.empty(np.shape(y_val))
-        y_test_pred = np.empty(np.shape(y_test))
+        y_train_pred = np.empty(y_train.shape)
+        y_val_pred = np.empty(y_val.shape)
+        y_test_pred = np.empty(y_test.shape)
 
         with torch.no_grad():
             model.eval()
@@ -574,80 +525,70 @@ def k_fold_training(
             y_val_inv = scaler_y.inverse_transform(y_val)
             y_test_inv = scaler_y.inverse_transform(y_test)
 
-            plt.figure(figsize=(20, 5))
-            plt.subplot(1, 3, 1)
-            plt.title("Train Set")
-            plt.plot(y_train_inv, y_train_pred_inv, ".")
-            plt.plot(
-                np.linspace(0, np.max(y_train_inv)),
-                np.linspace(0, np.max(y_train_inv)),
+            fig, axes = plt.subplots(ncols=3, figsize=(20, 5))
+            axes[0].plot(y_train_inv, y_train_pred_inv, ".")
+            equal_line_train = np.linspace(0, np.max(y_train_inv))
+            axes[0].plot(
+                equal_line_train, equal_line_train,
                 color="k",
                 linestyle="dashed",
             )
-            plt.xlabel("True y")
-            plt.ylabel("Pred y")
-            plt.subplot(1, 3, 2)
-            plt.title("Val Set")
-            plt.plot(y_val_inv, y_val_pred_inv, ".")
-            plt.plot(
-                np.linspace(0, np.max(y_val_inv)),
-                np.linspace(0, np.max(y_val_inv)),
+            axes[0].set_title("Train Set")
+            axes[0].set_xlabel("True y")
+            axes[0].set_ylabel("Pred y")
+            axes[1].plot(y_val_inv, y_val_pred_inv, ".")
+            equal_line_val = np.linspace(0, np.max(y_val_inv))
+            axes[1].plot(
+                equal_line_val, equal_line_val,
                 color="k",
                 linestyle="dashed",
             )
-            plt.xlabel("True y")
-            plt.ylabel("Pred y")
-            plt.subplot(1, 3, 3)
-            plt.title("Test Set")
-            plt.plot(y_test_inv, y_test_pred_inv, ".")
-            plt.plot(
-                np.linspace(0, np.max(y_test_inv)),
-                np.linspace(0, np.max(y_test_inv)),
+            axes[1].set_title("Val Set")
+            axes[1].set_xlabel("True y")
+            axes[1].set_ylabel("Pred y")
+            axes[2].plot(y_test_inv, y_test_pred_inv, ".")
+            equal_line_test = np.linspace(0, np.max(y_test_inv))
+            axes[2].plot(
+                equal_line_test, equal_line_test,
                 color="k",
                 linestyle="dashed",
             )
-            plt.xlabel("True y")
-            plt.ylabel("Pred y")
-            plt.savefig(
-                "./Plots/Model_Predictions_vs_Truth_" + MODEL_NAME + ".png",
+            axes[2].set_title("Test Set")
+            axes[2].set_xlabel("True y")
+            axes[2].set_ylabel("Pred y")
+            fig.savefig(
+                base_path / f"Plots/Model_Predictions_vs_Truth_{model_name}.png",
                 bbox_inches="tight",
             )
-            plt.close()
 
             time_test = np.array(df.loc[test_index, "time"])
             time_val = np.array(df.loc[val_index, "time"])
             time_train = np.array(df.loc[train_index, "time"])
 
-            limit_test = np.array(df.loc[test_index, which_rate + "_limit"])
-            limit_val = np.array(df.loc[val_index, which_rate + "_limit"])
-            limit_train = np.array(df.loc[train_index, which_rate + "_limit"])
+            limit_test = np.array(df.loc[test_index, f"{which_rate}_limit"])
+            limit_val = np.array(df.loc[val_index, f"{which_rate}_limit"])
+            limit_train = np.array(df.loc[train_index, f"{which_rate}_limit"])
 
-            plt.figure(figsize=(20, 5))
-            plt.subplot(1, 3, 1)
-            plt.title(k)
-            plt.title("Train Set")
-            plt.plot(time_train, y_train_inv, ".", alpha=0.5, label="True")
-            plt.plot(time_train, y_train_pred_inv, ".", alpha=0.5, label="Pred")
-            plt.xlabel("Time")
-            plt.ylabel("Y")
-            plt.legend()
-            plt.subplot(1, 3, 2)
-            plt.title("Val Set")
-            plt.plot(time_val, y_val_inv, ".", alpha=0.5, label="True")
-            plt.plot(time_val, y_val_pred_inv, ".", alpha=0.5, label="Pred")
-            plt.xlabel("Time")
-            plt.ylabel("Y")
-            plt.legend()
-            plt.subplot(1, 3, 3)
-            plt.title("Test Set")
-            plt.plot(time_test, y_test_inv, ".", alpha=0.5, label="True")
-            plt.plot(time_test, y_test_pred_inv, ".", alpha=0.5, label="Pred")
-            plt.xlabel("Time")
-            plt.ylabel("Y")
-            plt.legend()
-            plt.savefig("./Plots/" + MODEL_NAME + ".png", bbox_inches="tight")
-            #plt.show()
-            plt.close()
+            fig, axes = plt.subplots(ncols=3, figsize=(20, 5))
+            axes[0].plot(time_train, y_train_inv, ".", alpha=0.5, label="True")
+            axes[0].plot(time_train, y_train_pred_inv, ".", alpha=0.5, label="Pred")
+            axes[0].set_title("Train Set")
+            axes[0].set_xlabel("Time")
+            axes[0].set_ylabel("Y")
+            axes[0].legend()
+            axes[1].plot(time_val, y_val_inv, ".", alpha=0.5, label="True")
+            axes[1].plot(time_val, y_val_pred_inv, ".", alpha=0.5, label="Pred")
+            axes[1].set_title("Val Set")
+            axes[1].set_xlabel("Time")
+            axes[1].set_ylabel("Y")
+            axes[1].legend()
+            axes[2].plot(time_test, y_test_inv, ".", alpha=0.5, label="True")
+            axes[2].plot(time_test, y_test_pred_inv, ".", alpha=0.5, label="Pred")
+            axes[2].set_title("Test Set")
+            axes[2].set_xlabel("Time")
+            axes[2].set_ylabel("Y")
+            axes[2].legend()
+            fig.savefig(base_path / f"Plots/{model_name}.png", bbox_inches="tight")
 
             (
                 true_positive_train,
@@ -811,4 +752,33 @@ def k_fold_training(
             print()
 
 
-k_fold_training(X_data, y_data, index_11_fold, which_rate)
+rng = np.random.default_rng(12345)
+
+# There are FI and BI rates for txings, here I'm just choosing the FI rate
+# "fi_rate", "bi_rate"
+which_rate = "bi_rate"
+
+# Load the FITS table which includes the txings data and the GOES proton data
+t = Table.read(base_path / f"{which_rate}_table.fits", format="fits")
+
+# Figure out what columns from this table we need
+add_cols = ["time", which_rate, "obsid", which_rate + "_limit"]
+drop_chans = []
+
+for col in t.colnames:
+    # The data includes east and west columns, I am leaving the western data out
+    # because it does not show up in real-time telemetry
+    prefix = col.split("_")[0]
+    print(prefix)
+    if col.endswith("W") or prefix in drop_chans:
+        continue
+    if prefix.startswith("P"):
+        add_cols.append(col)
+
+print(add_cols)
+
+# Create a new table
+t_new = transform_goes(t[add_cols])
+df = t_new.to_pandas()
+
+k_fold_training(df, which_rate, rng=rng)
