@@ -46,7 +46,7 @@ K_START = 0
 K_STOP = 10
 
 x_factor = 10
-DATA_INCREASE_FACTOR = 1
+data_increase_factor = 1
 
 
 # There are FI and BI rates for txings, here I'm just choosing the FI rate
@@ -106,18 +106,6 @@ INPUT_LENGTH = np.shape(X_data)[1]
 near_detections_ids = find_near_detections(y_data, df[which_rate + "_limit"])
 
 
-def normalization(X_data, y_data):
-    X_means = np.mean(X_data, axis=0)
-    Y_mean = np.mean(y_data)
-    X_data_norm = np.empty(np.shape(X))
-
-    for i in range(np.shape(X)[1]):
-        X_data_norm[:, i] = np.tanh(np.log10((X_data[:, i] / X_means[i]) + 1))
-
-    y_data_norm = np.tanh(np.log10((y_data / Y_mean) + 1))
-    return X_data_norm, y_data_norm, X_means, Y_mean
-
-
 # function that increases the number of ~limit detections and generally expands data set
 # Use only for training and validation
 def data_augmentation(
@@ -126,12 +114,12 @@ def data_augmentation(
     data_index,
     near_detections_ids=near_detections_ids,
     epsilon=1e-4,
-    X_INCREASE=DATA_INCREASE_FACTOR,
+    X_INCREASE=data_increase_factor,
 ):
     # near_in_set = near or actual detections in data set
     # data_ids = location of intersection in data_index -> you need this to take data from train_set
     # id_ids = location of intersection in near_detections_ids - > don't need this
-    near_in_set, data_ids, id_ids = np.intersect1d(
+    near_in_set, data_ids, _ = np.intersect1d(
         data_index, near_detections_ids, return_indices=True
     )
 
@@ -447,7 +435,11 @@ def k_fold_training(
 ):
     lr = 1e-2 / lr_factor
 
-    X_data_norm, y_data_norm, X_means, Y_mean = normalization(X_data, y_data)
+    scaler_x = LogHyperbolicTangentScaler()
+    scaler_y = LogHyperbolicTangentScaler()
+
+    X_data_norm = scaler_x.fit_transform(X_data)
+    y_data_norm = scaler_y.fit_transform(y_data)
 
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
@@ -464,7 +456,7 @@ def k_fold_training(
             + "_learning_rate_max_stop_"
             + str(max_count)
             + "_DATA_AUG_"
-            + str(DATA_INCREASE_FACTOR)
+            + str(data_increase_factor)
             + "x"
         )
 
@@ -574,19 +566,13 @@ def k_fold_training(
                 del x_batch
 
             # Inverse transform the predictions and actual values
-            y_train_pred_inv = Y_mean * (
-                (10 ** (np.arctanh(y_train_pred))) - 1
-            )  # scaler_y.inverse_transform(y_train_pred)
-            y_val_pred_inv = Y_mean * (
-                (10 ** (np.arctanh(y_val_pred))) - 1
-            )  # scaler_y.inverse_transform(y_train_pred)
-            y_test_pred_inv = Y_mean * (
-                (10 ** (np.arctanh(y_test_pred))) - 1
-            )  # scaler_y.inverse_transform(y_test_pred)
+            y_train_pred_inv = scaler_y.inverse_transform(y_train_pred)
+            y_val_pred_inv = scaler_y.inverse_transform(y_val_pred)
+            y_test_pred_inv = scaler_y.inverse_transform(y_test_pred)
 
-            y_train_inv = Y_mean * ((10 ** (np.arctanh(y_train))) - 1)
-            y_val_inv = Y_mean * ((10 ** (np.arctanh(y_val))) - 1)
-            y_test_inv = Y_mean * ((10 ** (np.arctanh(y_test))) - 1)
+            y_train_inv = scaler_y.inverse_transform(y_train)
+            y_val_inv = scaler_y.inverse_transform(y_val)
+            y_test_inv = scaler_y.inverse_transform(y_test)
 
             plt.figure(figsize=(20, 5))
             plt.subplot(1, 3, 1)
