@@ -20,6 +20,7 @@ html_theme_options = dict(
     show_prev_next=False,
     sidebar_includehidden=False,
     navbar_center=[],
+    
 )
 
 

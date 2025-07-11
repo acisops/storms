@@ -1,4 +1,3 @@
-import acispy
 import numpy as np
 from astropy.table import Table, vstack
 from astropy.time import TimeDelta

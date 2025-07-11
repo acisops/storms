@@ -1,7 +1,7 @@
-import numpy as np
 from pathlib import Path
-import torch.nn as nn
 
+import numpy as np
+from torch import nn
 
 goes_path = Path("/data/acis/goes")
 
@@ -21,6 +21,23 @@ goes_bands = {
     "P10": [276.0, 404.0],
 }
 
+coeffs_16_19 = {
+    "P1": 0.8523294787577307,
+    "P2A": 0.6829297841361497,
+    "P2B": 0.9155916354664245,
+    "P3": 0.7235568865422375,
+    "P4": 1.5512339373799464,
+    "P5": 1.171415803057102,
+    "P6": 0.6621313006217242,
+    "P7": 0.9829375532604085,
+    "P8A": 0.9876683223951546,
+    "P8B": 1.0428979147767126,
+    "P8C": 0.5502883072599938,
+    "P9": 0.756540925797541,
+    "P10": 0.7197311497043392,
+}
+
+
 def transform_goes(t_in):
     # Remove values that are less than or equal to zero
     good = np.ones(len(t_in), dtype=bool)
@@ -35,7 +52,7 @@ def transform_goes(t_in):
         if col.startswith("P"):
             prefix = col.split("_")[0]
             t_out[col] *= (goes_bands[prefix][1] - goes_bands[prefix][0])
-            
+
     return t_out
 
 
@@ -55,7 +72,7 @@ class LogHyperbolicTangentScaler:
     def fit_transform(self, x):
         self.fit(x)
         return self.transform(x)
-    
+
 
 class MLPModel(nn.Module):
     def __init__(self, input_length, x_factor):

@@ -39,7 +39,7 @@ def train_val_split(X, y, index_11_fold, k):
     y_val = y[val_index]
     X_train = X[train_index]
     y_train = y[train_index]
-    return X_train, y_train, X_val, y_val, val_index, train_index
+    return X_train, y_train, X_val, y_val, np.where(val_index)[0], np.where(train_index)[0]
 
 
 def batch_retriever(index, max_batch_index, batch_size):
@@ -404,6 +404,8 @@ def k_fold_training(
 
     X_data_norm = scaler_x.fit_transform(X_data)
     y_data_norm = scaler_y.fit_transform(y_data)
+
+    np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
 
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
