@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 from astropy.table import Table, vstack
 from astropy.time import Time
-
+from storms.txings_proxy.utils import coeffs_16_19
 
 goes_url_base = "https://services.swpc.noaa.gov/json/goes/"
 goes_url_6h = "differential-protons-6-hour.json"
@@ -69,6 +69,9 @@ def format_goes_proton_data(dat, start_time):
         [f"{t.hour}{t.minute:02}" for t in times.datetime]
     ).astype(int)
 
+    for col in newdat.colnames:
+        if col.startswith("P") and "g16" in col:
+            newdat[col] *= coeffs_16_19[col.split("_")[0]]
     return newdat
 
 
