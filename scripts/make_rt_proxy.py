@@ -117,7 +117,7 @@ use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
        'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E']
 df = t_goes[use_cols].to_pandas()
 
-# Convert the specifix flux to total flux in the band for each channel by multiplying
+# Convert the specific flux to total flux in the band for each channel by multiplying
 # by the channel width
 for col in df.columns:
     if col.startswith("P"):

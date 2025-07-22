@@ -1,12 +1,14 @@
 import time
-from .utils import MLPModel, transform_goes, LogHyperbolicTangentScaler
+from storms.txings_proxy.utils import MLPModel, transform_goes, LogHyperbolicTangentScaler
 from astropy.table import Table
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from pathlib import Path 
+from pathlib import Path
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 # Verify MPS support
@@ -29,7 +31,7 @@ def test_split(X, y, index_11_fold):
     test_index = index_11_fold == 10
     X_test = X[test_index]
     y_test = y[test_index]
-    return X_test, y_test, test_index
+    return X_test, y_test, np.where(test_index)[0]
 
 
 def train_val_split(X, y, index_11_fold, k):
@@ -54,17 +56,12 @@ def batch_retriever(index, max_batch_index, batch_size):
 def data_augmentation(
     X_data,
     y_data,
-    y_limit,
     data_index,
-    near_detections_ids=None,
+    near_detections_ids,
     epsilon=1e-4,
     x_increase=1,
 ):
     input_length = X_data.shape[1]
-
-    if near_detections_ids is None:
-        # use this to modify dataset
-        near_detections_ids = find_near_detections(y_data, y_limit)
 
     # near_in_set = near or actual detections in data set
     # data_ids = location of intersection in data_index -> you need this to take data from train_set
@@ -348,30 +345,29 @@ def training_loop(
     ax.set_yscale("log")
     ax.set_title("Loss vs Epoch", fontsize=15)
     ax.legend(labels=["train_mse", "val_mse", "test_mse"], fontsize=15)
-    ax.tick_params(fontsize=15)
+    ax.tick_params(labelsize=15)
     ax.set_xlabel("Epochs", fontsize=15)
     ax.set_ylabel("Loss", fontsize=15)
     fig.savefig(base_path / f"Plots/{model_name}_epochs.png", bbox_inches="tight")
 
 
-def k_fold_training(
+def k_fold_train_test(
     df,
     which_rate,
-    new_index=True, # Need new index for k-folds?
+    new_index=False, # Need new index for k-folds?
+    k_start=0,
+    k_stop=10,
     lr_factor=1e3,
     max_count=50,
     batch_size=32,
     x_factor=10,
     data_increase_factor=1,
+    no_train=False,
     rng=None,
 ):
 
     if rng is None:
         rng = np.random.default_rng()
-
-    # Which k-folds to start and stop with
-    k_start = 0
-    k_stop = 10
 
     # Get the labels and features.
     X = df.drop([which_rate, f"{which_rate}_limit", "obsid", "time"], axis=1)
@@ -395,17 +391,24 @@ def k_fold_training(
     X_data = np.array(X)
     y_data = np.array(y)
 
+    near_detections_ids = find_near_detections(y_data, y_limit)
+
     input_length = X_data.shape[1]
 
     lr = 1e-2 / lr_factor
 
-    scaler_x = LogHyperbolicTangentScaler()
-    scaler_y = LogHyperbolicTangentScaler()
-
-    X_data_norm = scaler_x.fit_transform(X_data)
-    y_data_norm = scaler_y.fit_transform(y_data)
-
-    np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
+    if no_train:
+        means = np.load(f"means_{which_rate}.npz")
+        scaler_x = LogHyperbolicTangentScaler(mean=means["x"])
+        scaler_y = LogHyperbolicTangentScaler(mean=means["y"])
+        X_data_norm = scaler_x.transform(X_data)
+        y_data_norm = scaler_y.transform(y_data)
+    else:
+        scaler_x = LogHyperbolicTangentScaler()
+        scaler_y = LogHyperbolicTangentScaler()
+        X_data_norm = scaler_x.fit_transform(X_data)
+        y_data_norm = scaler_y.fit_transform(y_data)
+        np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
 
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
@@ -413,17 +416,12 @@ def k_fold_training(
     for k in range(k_start, k_stop):
         model_name = f"{which_rate}_k{k}_{x_factor}x_model_{int(lr_factor)}_learning_rate_max_stop_{max_count}_DATA_AUG_{data_increase_factor}x"
 
-        # Initialize the model
-        model = MLPModel(input_length, x_factor).to(device)
-        criterion = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-
         X_train, y_train, X_val, y_val, val_index, train_index = train_val_split(
             X_data_norm, y_data_norm, index_11_fold, k
         )
 
-        X_train, y_train, train_index = data_augmentation(X_train, y_train, y_limit, train_index, x_increase=data_increase_factor)
-        X_val, y_val, val_index = data_augmentation(X_val, y_val, y_limit, val_index, x_increase=data_increase_factor)
+        X_train, y_train, train_index = data_augmentation(X_train, y_train, train_index, near_detections_ids, x_increase=data_increase_factor)
+        X_val, y_val, val_index = data_augmentation(X_val, y_val, val_index, near_detections_ids, x_increase=data_increase_factor)
 
         train_length = len(X_train)
         val_length = len(X_val)
@@ -440,34 +438,40 @@ def k_fold_training(
         test_indices = np.arange(test_length, dtype=int)
         test_max_batch_index = test_batch_indices[-1]
 
-        # train model
-        training_loop(
-            model_name,
-            model,
-            device,
-            X_train,
-            y_train,
-            X_val,
-            y_val,
-            X_test,
-            y_test,
-            train_batch_indices,
-            train_max_batch_index,
-            train_indices,
-            val_batch_indices,
-            val_max_batch_index,
-            val_indices,
-            test_batch_indices,
-            test_max_batch_index,
-            test_indices,
-            batch_size,
-            criterion,
-            optimizer,
-            train_length,
-            val_length,
-            test_length,
-            max_count,
-        )
+        model = MLPModel(input_length, x_factor).to(device)
+
+        if not no_train:
+            # Initialize the model
+            criterion = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+            # Train the model
+            training_loop(
+                model_name,
+                model,
+                device,
+                X_train,
+                y_train,
+                X_val,
+                y_val,
+                X_test,
+                y_test,
+                train_batch_indices,
+                train_max_batch_index,
+                train_indices,
+                val_batch_indices,
+                val_max_batch_index,
+                val_indices,
+                test_batch_indices,
+                test_max_batch_index,
+                test_indices,
+                batch_size,
+                criterion,
+                optimizer,
+                train_length,
+                val_length,
+                test_length,
+                max_count,
+            )
 
         model.load_state_dict(torch.load(base_path / f"Models/{model_name}_min_epoch"))
 
@@ -483,8 +487,7 @@ def k_fold_training(
                 j0, jf = batch_retriever(
                     train_batch_indices[i], train_max_batch_index, batch_size
                 )
-                x_batch = X_train[train_indices[j0:jf]]
-                x_batch = torch.from_numpy(x_batch).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_train[train_indices[j0:jf]]).to(device, torch.float32)
                 # ===================forward=====================
                 y_train_pred[train_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -496,8 +499,7 @@ def k_fold_training(
                 j0, jf = batch_retriever(
                     val_batch_indices[i], val_max_batch_index, batch_size
                 )
-                x_batch = X_val[val_indices[j0:jf]]
-                x_batch = torch.from_numpy(x_batch).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_val[val_indices[j0:jf]]).to(device, torch.float32)
                 # ===================forward=====================
                 y_val_pred[val_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -509,9 +511,7 @@ def k_fold_training(
                 j0, jf = batch_retriever(
                     test_batch_indices[i], test_max_batch_index, batch_size
                 )
-                x_batch = X_test[test_indices[j0:jf]]
-                y_batch = y_test[test_indices[j0:jf]]
-                x_batch = torch.from_numpy(x_batch).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_test[test_indices[j0:jf]]).to(device, torch.float32)
                 # ===================forward=====================
                 y_test_pred[test_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -571,26 +571,56 @@ def k_fold_training(
             limit_val = np.array(df.loc[val_index, f"{which_rate}_limit"])
             limit_train = np.array(df.loc[train_index, f"{which_rate}_limit"])
 
-            fig, axes = plt.subplots(ncols=3, figsize=(20, 5))
-            axes[0].plot(time_train, y_train_inv, ".", alpha=0.5, label="True")
-            axes[0].plot(time_train, y_train_pred_inv, ".", alpha=0.5, label="Pred")
-            axes[0].set_title("Train Set")
-            axes[0].set_xlabel("Time")
-            axes[0].set_ylabel("Y")
-            axes[0].legend()
-            axes[1].plot(time_val, y_val_inv, ".", alpha=0.5, label="True")
-            axes[1].plot(time_val, y_val_pred_inv, ".", alpha=0.5, label="Pred")
-            axes[1].set_title("Val Set")
-            axes[1].set_xlabel("Time")
-            axes[1].set_ylabel("Y")
-            axes[1].legend()
-            axes[2].plot(time_test, y_test_inv, ".", alpha=0.5, label="True")
-            axes[2].plot(time_test, y_test_pred_inv, ".", alpha=0.5, label="Pred")
-            axes[2].set_title("Test Set")
-            axes[2].set_xlabel("Time")
-            axes[2].set_ylabel("Y")
-            axes[2].legend()
-            fig.savefig(base_path / f"Plots/{model_name}.png", bbox_inches="tight")
+            # Create a 1-row, 3-column subplot figure
+            fig = make_subplots(rows=1, cols=3, subplot_titles=("Train Set", "Val Set", "Test Set"))
+
+            # Plot Train Set
+            fig.add_trace(
+                go.Scatter(x=time_train, y=y_train_inv, mode='markers', name='True (Train)', opacity=0.5),
+                row=1, col=1
+            )
+            fig.add_trace(
+                go.Scatter(x=time_train, y=y_train_pred_inv, mode='markers', name='Pred (Train)', opacity=0.5),
+                row=1, col=1
+            )
+
+            # Plot Validation Set
+            fig.add_trace(
+                go.Scatter(x=time_val, y=y_val_inv, mode='markers', name='True (Val)', opacity=0.5),
+                row=1, col=2
+            )
+            fig.add_trace(
+                go.Scatter(x=time_val, y=y_val_pred_inv, mode='markers', name='Pred (Val)', opacity=0.5),
+                row=1, col=2
+            )
+
+            # Plot Test Set
+            fig.add_trace(
+                go.Scatter(x=time_test, y=y_test_inv, mode='markers', name='True (Test)', opacity=0.5),
+                row=1, col=3
+            )
+            fig.add_trace(
+                go.Scatter(x=time_test, y=y_test_pred_inv, mode='markers', name='Pred (Test)', opacity=0.5),
+                row=1, col=3
+            )
+
+            # Set common axis titles
+            fig.update_xaxes(title_text="Time", row=1, col=1)
+            fig.update_xaxes(title_text="Time", row=1, col=2)
+            fig.update_xaxes(title_text="Time", row=1, col=3)
+            fig.update_yaxes(title_text="Y", row=1, col=1)
+            fig.update_yaxes(title_text="Y", row=1, col=2)
+            fig.update_yaxes(title_text="Y", row=1, col=3)
+
+            # Layout and legend
+            fig.update_layout(
+                width=1200, height=400,
+                title_text=f"{model_name} Predictions",
+                showlegend=True
+            )
+
+            # To save as HTML
+            fig.write_html(str(base_path / f"Plots/{model_name}.html"))
 
             (
                 true_positive_train,
@@ -758,7 +788,7 @@ rng = np.random.default_rng(12345)
 
 # There are FI and BI rates for txings, here I'm just choosing the FI rate
 # "fi_rate", "bi_rate"
-which_rate = "bi_rate"
+which_rate = "fi_rate"
 
 # Load the FITS table which includes the txings data and the GOES proton data
 t = Table.read(base_path / f"{which_rate}_table.fits", format="fits")
@@ -783,4 +813,5 @@ print(add_cols)
 t_new = transform_goes(t[add_cols])
 df = t_new.to_pandas()
 
-k_fold_training(df, which_rate, rng=rng)
+k_fold_train_test(df, which_rate, new_index=False, no_train=True, rng=rng)
+
