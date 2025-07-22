@@ -37,7 +37,7 @@ t["time"] = t["time_g16"].copy()
 for col in t.colnames:
     print(np.isnan(t[col]).any())
 t.remove_columns(["time_g16", "time_g18"])
-
+t.write("goes_16_18.fits", overwrite=True)
 
 sw = SolarWind(CxoTime(t["time"][0]).yday, CxoTime(t["time"][-1]).yday, get_txings=True)
 
