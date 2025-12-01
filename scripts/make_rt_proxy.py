@@ -98,18 +98,24 @@ else:
         start_time = -1.0
         use7d = True
     t_goes = get_realtime_goes(start_time, use7d=use7d)
+    #if start_time > 0.0 and start_time < t_goes["time"].min():
+    #    t_exist = None 
+    #    t_goes = get_realtime_goes(start_time, use7d=True)
     # Remove values that are less than zero
-    good = np.ones(len(t_goes), dtype=bool)
-    for col in t_goes.columns:
-        if col.startswith("P"):
-            good &= t_goes[col] >= 0.0
-    t_goes = t_goes[good]
     if t_exist is not None:
         if t_goes is None:
             t_goes = t_exist
         else:
-            t_goes = vstack([t_exist, t_goes])
-
+            # Remove values that are less than zero
+            good = np.ones(len(t_goes), dtype=bool)
+            for col in t_goes.columns:
+                if col.startswith("P"):
+                    good &= t_goes[col] >= 0.0
+            if np.sum(good) == 0:
+                t_goes = t_exist
+            else:
+                t_goes = vstack([t_exist, t_goes[good]])
+        
 use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
        'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
        'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',

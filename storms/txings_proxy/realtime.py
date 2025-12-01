@@ -29,7 +29,7 @@ def get_goes_json_data(url):
             time.sleep(5)
     else:
         print(f"Warning: failed to open URL {url}: {last_err}")
-        sys.exit(0)
+        return
 
     return Table(data)
 
@@ -81,5 +81,7 @@ def get_realtime_goes(start_time, use7d=False):
     for source in ["primary", "secondary"]:
         url = f"{goes_url_base}{source}/{url_end}"
         dat = get_goes_json_data(url=url)
+        if dat is None:
+            return
         dat_all = vstack([dat_all, dat])
     return format_goes_proton_data(dat_all, start_time)
