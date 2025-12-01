@@ -34,9 +34,9 @@ t_proxy = Table.read(p)
 
 times = Time(t_proxy["time"], format='cxcsec')
 
-sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True, get_ace=False)
+print(times[0].yday, times[-1].yday)
 
-print(times[-1].yday)
+sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True, get_ace=False)
 
 idxs = times >= times[-1] - args.days*u.day
 
@@ -45,25 +45,29 @@ bi_rate_limit = 20.0*np.ones_like(times.cxcsec)
 
 fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 13), constrained_layout=True)
 
-ax1.plot(times.datetime[idxs], t_proxy["fi_rate_predict"][idxs], lw=3, label="FI Prediction", color="C0")
-ax1.plot(times.datetime[idxs], fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
+times_idxs = times.datetime[idxs]
+fi_rate_predict = t_proxy["fi_rate_predict"][idxs]
+bi_rate_predict = t_proxy["bi_rate_predict"][idxs]
+
+ax1.plot(times_idxs, fi_rate_predict, lw=3, label="FI Prediction", color="C0")
+ax1.plot(times_idxs, fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
 ax1.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', ms=6, label="FI Data", color="C1")
 
-ax2.plot(times.datetime[idxs], t_proxy["bi_rate_predict"][idxs], lw=3, label="BI Prediction", color="C2")
-ax2.plot(times.datetime[idxs], bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
+ax2.plot(times_idxs, bi_rate_predict, lw=3, label="BI Prediction", color="C2")
+ax2.plot(times_idxs, bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
 ax2.plot(sw.txings_times.datetime, sw.txings_data["bi_rate"], '.', ms=6, label="BI Data", color="C3")
 
 for ax in [ax1, ax2]:
     ax.grid()
-    ax.set_xlim(times.datetime[idxs][0], times[-1].datetime)
+    ax.set_xlim(times_idxs[0], times[-1].datetime)
     ax.set_xlabel("Date")
     ax.legend(fontsize=16, loc='upper left')
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%j:%H"))
 
 fig.autofmt_xdate()
 
-ax1.set_ylim(80, 420.0)
-ax2.set_ylim(5, 35.0)
+ax1.set_ylim(80, max(420.0, fi_rate_predict.max()+25.0))
+ax2.set_ylim(5, max(35.0, bi_rate_predict.max()+2.5))
 
 fig.supylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
 
