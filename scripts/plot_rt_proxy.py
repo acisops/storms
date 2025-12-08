@@ -34,55 +34,61 @@ t_proxy = Table.read(p)
 
 times = Time(t_proxy["time"], format='cxcsec')
 
-print(times[0].yday, times[-1].yday)
+tstop = times[-1]
+tstart = times[-1] - args.days*u.day
 
-sw = SolarWind(times[0].yday, times[-1].yday, get_txings=True, get_ace=False)
+print(tstart.yday, tstop.yday)
 
-idxs = times >= times[-1] - args.days*u.day
-
-fi_rate_limit = 320.0*np.ones_like(times.cxcsec)
-bi_rate_limit = 20.0*np.ones_like(times.cxcsec)
+sw = SolarWind(tstart.yday, tstop.yday, get_txings=True, get_ace=False)
 
 fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 13), constrained_layout=True)
 
-times_idxs = times.datetime[idxs]
-fi_rate_predict = t_proxy["fi_rate_predict"][idxs]
-bi_rate_predict = t_proxy["bi_rate_predict"][idxs]
+model_idxs = times >= tstop - args.days*u.day
+model_times = times.datetime[model_idxs]
+fi_rate_predict = t_proxy["fi_rate_predict"][model_idxs]
+bi_rate_predict = t_proxy["bi_rate_predict"][model_idxs]
+fi_rate_limit = 320.0*np.ones_like(times.cxcsec)[model_idxs]
+bi_rate_limit = 20.0*np.ones_like(times.cxcsec)[model_idxs]
 
-ax1.plot(times_idxs, fi_rate_predict, lw=3, label="FI Prediction", color="C0")
-ax1.plot(times_idxs, fi_rate_limit[idxs], label="FI Limit", lw=2, color="C0")
-ax1.plot(sw.txings_times.datetime, sw.txings_data["fi_rate"], '.', ms=6, label="FI Data", color="C1")
+data_idxs = sw.txings_times >= tstop - args.days*u.day
+data_times = sw.txings_times.datetime[data_idxs]
+fi_rate = sw.txings_data["fi_rate"][data_idxs]
+bi_rate = sw.txings_data["bi_rate"][data_idxs]
 
-ax2.plot(times_idxs, bi_rate_predict, lw=3, label="BI Prediction", color="C2")
-ax2.plot(times_idxs, bi_rate_limit[idxs], label="BI Limit", lw=2, color="C2")
-ax2.plot(sw.txings_times.datetime, sw.txings_data["bi_rate"], '.', ms=6, label="BI Data", color="C3")
+ax1.plot(model_times, fi_rate_predict, lw=3, label="FI Prediction", color="C0")
+ax1.plot(model_times, fi_rate_limit, label="FI Limit", lw=2, color="C0")
+ax1.plot(data_times, fi_rate, '.', ms=6, label="FI Data", color="C1")
+
+ax2.plot(model_times, bi_rate_predict, lw=3, label="BI Prediction", color="C2")
+ax2.plot(model_times, bi_rate_limit, label="BI Limit", lw=2, color="C2")
+ax2.plot(data_times, bi_rate, '.', ms=6, label="BI Data", color="C3")
 
 for ax in [ax1, ax2]:
     ax.grid()
-    ax.set_xlim(times_idxs[0], times[-1].datetime)
+    ax.set_xlim(model_times[0], times[-1].datetime)
     ax.set_xlabel("Date")
     ax.legend(fontsize=16, loc='upper left')
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%j:%H"))
 
 fig.autofmt_xdate()
 
-ax1.set_ylim(80, max(420.0, fi_rate_predict.max()+25.0))
-ax2.set_ylim(5, max(35.0, bi_rate_predict.max()+2.5))
+ax1.set_ylim(80, max(420.0, fi_rate.max()*1.1, fi_rate_predict.max()*1.1))
+ax2.set_ylim(5, max(35.0, bi_rate.max()*1.1, bi_rate_predict.max()*1.1))
 
 fig.supylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
 
-states = get_states(start=times.yday[idxs][0], stop=times[-1].yday, 
+states = get_states(start=times.yday[model_idxs][0], stop=times[-1].yday,
                     merge_identical=True)
 oidxs = np.array(["obsid" in s for s in states["trans_keys"]])
 obsids = states["obsid"][oidxs]
 tstart = CxoTime(states["tstart"][oidxs])
 
 for o, t in zip(obsids, tstart):
-    if t >= times.datetime[idxs][0] and o <= 39000:
+    if t >= model_times[0] and o <= 39000:
         for ax, ypos in zip([ax1, ax2], [100, 8]):
             ax.text(t.datetime, ypos, str(o), color="C3", rotation=90, 
                     ha='center', va='bottom', fontsize=14, zorder=-100)
-for rz in rad_zones.filter(start=times.yday[idxs][0], stop=(times[-1]+2*u.day).yday):
+for rz in rad_zones.filter(start=times.yday[model_idxs][0], stop=(times[-1]+2*u.day).yday):
     for ax in [ax1, ax2]:
         ax.axvspan(CxoTime(rz.tstart).datetime, 
                    CxoTime(rz.tstop).datetime,

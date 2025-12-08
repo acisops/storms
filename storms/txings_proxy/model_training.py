@@ -1,5 +1,5 @@
 import time
-from storms.txings_proxy.utils import MLPModel, transform_goes, LogHyperbolicTangentScaler
+from storms.txings_proxy.utils import MLPModel, transform_goes, LogHyperbolicTangentScaler, MultiScaler
 from astropy.table import Table
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +9,9 @@ import torch.optim as optim
 from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from IPython import embed
+import joblib
+from sklearn.metrics import mean_squared_error
 
 
 # Verify MPS support
@@ -21,6 +24,25 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 base_path = Path(__file__).parent
 
+
+def permutation_importance(model, X_val, y_val, loss_fn):
+    model.eval()
+    with torch.no_grad():
+        baseline_preds = model(X_val)
+        baseline_loss = loss_fn(baseline_preds, y_val).item()
+
+    importances = []
+    for i in range(X_val.shape[1]):
+        X_permuted = X_val.clone()
+        X_permuted[:, i] = X_permuted[:, i][torch.randperm(X_permuted.size(0))]
+
+        with torch.no_grad():
+            permuted_preds = model(X_permuted)
+            permuted_loss = loss_fn(permuted_preds, y_val).item()
+
+        importances.append(permuted_loss - baseline_loss)
+
+    return np.array(importances)
 
 def find_near_detections(y_data, limits, tolerance=-10):
     # tolerance is negative so that anything near OR OVER the limit will be boosted
@@ -388,6 +410,8 @@ def k_fold_train_test(
             base_path / f"Indices/{which_rate}_k_fold_validation_index.npy",
         )
 
+    feature_names = list(X.columns)
+    print(feature_names)
     X_data = np.array(X)
     y_data = np.array(y)
 
@@ -398,17 +422,21 @@ def k_fold_train_test(
     lr = 1e-2 / lr_factor
 
     if no_train:
-        means = np.load(f"means_{which_rate}.npz")
-        scaler_x = LogHyperbolicTangentScaler(mean=means["x"])
-        scaler_y = LogHyperbolicTangentScaler(mean=means["y"])
+        #means = np.load(f"means_{which_rate}.npz")
+        #scaler_x = LogHyperbolicTangentScaler(mean=means["x"])
+        scaler_x = joblib.load(f"scaler_{which_rate}_x.pkl")
+        scaler_y = joblib.load(f"scaler_{which_rate}_y.pkl")
         X_data_norm = scaler_x.transform(X_data)
         y_data_norm = scaler_y.transform(y_data)
     else:
-        scaler_x = LogHyperbolicTangentScaler()
+        #scaler_x = LogHyperbolicTangentScaler()
+        scaler_x = MultiScaler(X.columns.tolist())
         scaler_y = LogHyperbolicTangentScaler()
         X_data_norm = scaler_x.fit_transform(X_data)
         y_data_norm = scaler_y.fit_transform(y_data)
-        np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
+        joblib.dump(scaler_x, f"scaler_{which_rate}_x.pkl")
+        joblib.dump(scaler_y, f"scaler_{which_rate}_y.pkl")
+        #np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
 
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
@@ -426,6 +454,8 @@ def k_fold_train_test(
         train_length = len(X_train)
         val_length = len(X_val)
 
+        importances = permutation_importance(model, X_val, y_val, mean_squared_error)
+        
         train_batch_indices = np.arange(train_length // batch_size, dtype=int)
         train_indices = np.arange(train_length, dtype=int)
         train_max_batch_index = train_batch_indices[-1]
@@ -473,7 +503,23 @@ def k_fold_train_test(
                 max_count,
             )
 
+        """
+        # Suppose your training features are in a PyTorch tensor
+        # Shape: (n_samples, n_features)
+        X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device=device)
+        X_val_tensor = torch.tensor(X_val, dtype=torch.float32, device=device)
+
+        n_background = 100
+        idx = np.random.choice(len(X_train_tensor), size=n_background, replace=False)
+        background_data_tensor = X_train_tensor[idx]
+        """
+
         model.load_state_dict(torch.load(base_path / f"Models/{model_name}_min_epoch"))
+
+        """
+        model.eval()
+
+        """
 
         # begin analysis of trained model
         y_train_pred = np.empty(y_train.shape)
@@ -481,7 +527,6 @@ def k_fold_train_test(
         y_test_pred = np.empty(y_test.shape)
 
         with torch.no_grad():
-            model.eval()
             train_indices = np.arange(train_length)
             for i in train_batch_indices:
                 j0, jf = batch_retriever(
@@ -795,16 +840,18 @@ t = Table.read(base_path / f"{which_rate}_table.fits", format="fits")
 
 # Figure out what columns from this table we need
 add_cols = ["time", which_rate, "obsid", which_rate + "_limit"]
+
 drop_chans = []
 
 for col in t.colnames:
     # The data includes east and west columns, I am leaving the western data out
     # because it does not show up in real-time telemetry
     prefix = col.split("_")[0]
-    print(prefix)
     if col.endswith("W") or prefix in drop_chans:
         continue
     if prefix.startswith("P"):
+        add_cols.append(col)
+    if "ephem" in col:
         add_cols.append(col)
 
 print(add_cols)
@@ -813,5 +860,5 @@ print(add_cols)
 t_new = transform_goes(t[add_cols])
 df = t_new.to_pandas()
 
-k_fold_train_test(df, which_rate, new_index=False, no_train=True, rng=rng)
+k_fold_train_test(df, which_rate, new_index=True, no_train=False, rng=rng)
 

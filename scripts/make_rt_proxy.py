@@ -1,16 +1,17 @@
-import torch.nn as nn
-import torch
-from astropy.table import Table, vstack
-from storms.utils import base_path
-from storms.txings_proxy.utils import goes_bands, LogHyperbolicTangentScaler, transform_goes, MLPModel
-from storms.txings_proxy.realtime import get_realtime_goes
-from string import Template
-from scipy.ndimage import uniform_filter1d
-from argparse import ArgumentParser
-from cxotime import CxoTime
-
-from pathlib import Path
+import joblib
 import numpy as np
+import torch
+from argparse import ArgumentParser
+from astropy.table import Table, vstack
+from cheta import fetch_sci as fetch
+from cxotime import CxoTime
+from pathlib import Path
+from scipy.ndimage import uniform_filter1d
+from string import Template
+
+from storms.txings_proxy.realtime import get_realtime_goes
+from storms.txings_proxy.utils import goes_bands, MLPModel
+from storms.utils import base_path
 
 data_path = base_path / "txings_proxy/data"
 
@@ -26,12 +27,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--use_historical", action="store_true", 
+    "--use_historical", action="store_true",
     help="Use historical data."
 )
 
 parser.add_argument(
-    "--use_7day", action="store_true", 
+    "--use_7day", action="store_true",
     help="Use 7-day file."
 )
 
@@ -53,16 +54,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 x_factor = 10
-input_length = 26
+input_length = 32
 
-means_fi = np.load(data_path / "means_fi_rate.npz")
-scaler_fi_x = LogHyperbolicTangentScaler(mean=means_fi["x"])
-scaler_fi_y = LogHyperbolicTangentScaler(mean=means_fi["y"])
+scaler_fi_x = joblib.load(data_path / "scaler_fi_rate_x.pkl")
+scaler_fi_y = joblib.load(data_path / "scaler_fi_rate_y.pkl")
 
-means_bi = np.load(data_path / "means_bi_rate.npz")
-scaler_bi_x = LogHyperbolicTangentScaler(mean=means_bi["x"])
-scaler_bi_y = LogHyperbolicTangentScaler(mean=means_bi["y"])
-
+scaler_bi_x = joblib.load(data_path / "scaler_bi_rate_x.pkl")
+scaler_bi_y = joblib.load(data_path / "scaler_bi_rate_y.pkl")
 
 p = Path(args.out_file)
 if args.use_historical:
@@ -90,19 +88,17 @@ if args.use_historical:
 else:
     if p.exists() and not args.overwrite_table:
         t_exist = Table.read(p)
-        start_time = t_exist["time"][-1]
+        break_time = t_exist["time"][-1]
         use7d = args.use_7day
     else:
         print("overwrite")
         t_exist = None
-        start_time = -1.0
+        break_time = -1.0
         use7d = True
-    t_goes = get_realtime_goes(start_time, use7d=use7d)
-    #if start_time > 0.0 and start_time < t_goes["time"].min():
-    #    t_exist = None 
-    #    t_goes = get_realtime_goes(start_time, use7d=True)
-    # Remove values that are less than zero
+    t_goes, first_time = get_realtime_goes(break_time, use7d=use7d)
     if t_exist is not None:
+        if t_goes is None or t_exist["time"][-1] < first_time:
+            t_goes, first_time = get_realtime_goes(break_time, use7d=True)
         if t_goes is None:
             t_goes = t_exist
         else:
@@ -114,13 +110,26 @@ else:
             if np.sum(good) == 0:
                 t_goes = t_exist
             else:
-                t_goes = vstack([t_exist, t_goes[good]])
-        
+                for col in t_goes.columns:
+                    if col.startswith("P"):
+                        t_goes[col][~good] = np.nan
+                t_goes = vstack([t_exist, t_goes])
+
+ephem_msids = ['orbitephem0_x', 'orbitephem0_y', 'orbitephem0_z', 'solarephem0_x', 'solarephem0_y', 'solarephem0_z']
+ephem_data = fetch.MSIDset(ephem_msids, t_goes["time"][0], t_goes["time"][-1], stat="5min")
+
+print(len(t_goes["time"]))
+
+for msid in ephem_msids:
+    t_goes[msid] = np.interp(t_goes["time"], ephem_data[msid].times, ephem_data[msid].vals)
+
 use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
-       'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
-       'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
-       'P2B_g18_E', 'P3_g18_E', 'P4_g18_E', 'P5_g18_E', 'P6_g18_E', 'P7_g18_E',
-       'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E']
+            'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
+            'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
+            'P2B_g18_E', 'P3_g18_E', 'P4_g18_E', 'P5_g18_E', 'P6_g18_E', 'P7_g18_E',
+            'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E',
+            'orbitephem0_x', 'orbitephem0_y', 'orbitephem0_z', 'solarephem0_x', 'solarephem0_y', 'solarephem0_z']
+
 df = t_goes[use_cols].to_pandas()
 
 # Convert the specific flux to total flux in the band for each channel by multiplying
@@ -129,10 +138,10 @@ for col in df.columns:
     if col.startswith("P"):
         prefix = col.split("_")[0]
         i = use_cols.index(col)
-        df[col] = uniform_filter1d(df[col], 10, axis=0)*(goes_bands[prefix][1] - goes_bands[prefix][0])
-        
+        df[col] = uniform_filter1d(df[col], 10, axis=0) * (goes_bands[prefix][1] - goes_bands[prefix][0])
+
 X = np.array(df)
- 
+
 n_folds = 10
 
 xx_fi = torch.from_numpy(scaler_fi_x.transform(X)).to(device, torch.float32)

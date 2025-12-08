@@ -34,22 +34,23 @@ def get_goes_json_data(url):
     return Table(data)
 
 
-def format_goes_proton_data(dat, start_time):
+def format_goes_proton_data(dat, break_time):
     """
     Manipulate the data and return them in a desired format.
     """
 
+    first_time = Time(dat[0]["time_tag"]).cxcsec-60
     # Create a dictionary to capture the channel data for each time
     out = defaultdict(dict)
     for row in dat:
-        if Time(row["time_tag"]).cxcsec-60 <= start_time:
+        if Time(row["time_tag"]).cxcsec-60 <= break_time:
             continue
         satellite = 16 if row['satellite'] == 19 else row['satellite']
         out[row["time_tag"]][f"{row['channel'].upper()}_g{satellite}_E"] = row["flux"]
         out[row["time_tag"]]["yaw_flip"] = row["yaw_flip"]
 
     if len(out.keys()) == 0:
-        return None
+        return None, None
 
     # Reshape that data into a table with the channels as columns
     newdat = Table(list(out.values())).filled(BAD_VALUE)
@@ -72,10 +73,10 @@ def format_goes_proton_data(dat, start_time):
     for col in newdat.colnames:
         if col.startswith("P") and "g16" in col:
             newdat[col] *= coeffs_16_19[col.split("_")[0]]
-    return newdat
+    return newdat, first_time
 
 
-def get_realtime_goes(start_time, use7d=False):
+def get_realtime_goes(break_time, use7d=False):
     dat_all = Table()
     url_end = goes_url_7d if use7d else goes_url_6h
     for source in ["primary", "secondary"]:
@@ -84,4 +85,4 @@ def get_realtime_goes(start_time, use7d=False):
         if dat is None:
             return
         dat_all = vstack([dat_all, dat])
-    return format_goes_proton_data(dat_all, start_time)
+    return format_goes_proton_data(dat_all, break_time)

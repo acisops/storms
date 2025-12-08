@@ -2,6 +2,8 @@ from pathlib import Path
 
 import numpy as np
 from torch import nn
+from sklearn.preprocessing import MinMaxScaler
+
 
 goes_path = Path("/data/acis/goes")
 
@@ -57,8 +59,8 @@ def transform_goes(t_in):
 
 
 class LogHyperbolicTangentScaler:
-    def __init__(self, mean=1.0):
-        self._mean = mean
+    def __init__(self):
+        self._mean = 1.0
 
     def fit(self, x):
         self._mean = np.mean(np.array(x), axis=0)
@@ -66,12 +68,44 @@ class LogHyperbolicTangentScaler:
     def transform(self, x):
         return np.tanh(np.log10(x / self._mean + 1.0))
 
-    def inverse_transform(self, x):
-        return self._mean*(10**np.arctanh(x) - 1.0)
+    def inverse_transform(self, y):
+        return self._mean*(10**np.arctanh(y) - 1.0)
 
     def fit_transform(self, x):
         self.fit(x)
         return self.transform(x)
+
+
+class MultiScaler:
+    """Applies different sklearn scalers to different column subsets."""
+
+    def __init__(self, colnames):
+        is_proton = np.char.startswith(colnames, "P")
+        self.lht_cols = np.where(is_proton)[0]
+        self.mm_cols = np.where(~is_proton)[0]
+
+        self.lht_scaler = LogHyperbolicTangentScaler()
+        self.mm_scaler = MinMaxScaler()
+
+    def fit(self, X):
+        self.lht_scaler.fit(X[:, self.lht_cols])
+        self.mm_scaler.fit(X[:, self.mm_cols])
+
+    def transform(self, X):
+        X = X.copy()
+        X[:, self.lht_cols] = self.lht_scaler.transform(X[:, self.lht_cols])
+        X[:, self.mm_cols] = self.mm_scaler.transform(X[:, self.mm_cols])
+        return X
+
+    def inverse_transform(self, y):
+        y = y.copy()
+        y[:, self.lht_cols] = self._mean*(10**np.arctanh(y[:, self.lht_cols]) - 1.0)
+        y[:, self.mm_cols] = self.mm_scaler.inverse_transform(y[:, self.mm_cols])
+        return y
+
+    def fit_transform(self, X):
+        self.fit(X)
+        return self.transform(X)
 
 
 class MLPModel(nn.Module):
