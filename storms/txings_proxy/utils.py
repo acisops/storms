@@ -48,7 +48,7 @@ def transform_goes(t_in):
             good &= t_in[col] > 0.0
     t_out = t_in[good]
 
-    # Convert the specifix flux to total flux in the band for each channel by multiplying
+    # Convert the specific flux to total flux in the band for each channel by multiplying
     # by the channel width
     for col in t_out.columns:
         if col.startswith("P"):
@@ -109,7 +109,7 @@ class MultiScaler:
 
 
 class MLPModel(nn.Module):
-    def __init__(self, input_length, x_factor):
+    def __init__(self, input_length, x_factor=10):
         super(MLPModel, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(input_length, input_length*2*x_factor),

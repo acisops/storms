@@ -7,13 +7,12 @@ from cheta import fetch_sci as fetch
 from cxotime import CxoTime
 from pathlib import Path
 from scipy.ndimage import uniform_filter1d
-from string import Template
 
 from storms.txings_proxy.realtime import get_realtime_goes
 from storms.txings_proxy.utils import goes_bands, MLPModel
 from storms.utils import base_path
 
-data_path = base_path / "txings_proxy/data"
+models_path = base_path / "txings_proxy/Models"
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -53,14 +52,13 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-x_factor = 10
 input_length = 32
 
-scaler_fi_x = joblib.load(data_path / "scaler_fi_rate_x.pkl")
-scaler_fi_y = joblib.load(data_path / "scaler_fi_rate_y.pkl")
+scaler_fi_x = joblib.load(models_path / "scaler_fi_rate_x.pkl")
+scaler_fi_y = joblib.load(models_path / "scaler_fi_rate_y.pkl")
 
-scaler_bi_x = joblib.load(data_path / "scaler_bi_rate_x.pkl")
-scaler_bi_y = joblib.load(data_path / "scaler_bi_rate_y.pkl")
+scaler_bi_x = joblib.load(models_path / "scaler_bi_rate_x.pkl")
+scaler_bi_y = joblib.load(models_path / "scaler_bi_rate_y.pkl")
 
 p = Path(args.out_file)
 if args.use_historical:
@@ -147,14 +145,13 @@ n_folds = 10
 xx_fi = torch.from_numpy(scaler_fi_x.transform(X)).to(device, torch.float32)
 xx_bi = torch.from_numpy(scaler_bi_x.transform(X)).to(device, torch.float32)
 
-model_template = Template("${which}_rate_k${fold}_10x_model_1000_learning_rate_max_stop_50_DATA_AUG_1x_min_epoch")
 y_inv_fi = []
 y_inv_bi = []
 for k in range(n_folds):
-    model_fi = MLPModel(input_length, x_factor).to(device)
-    model_fi.load_state_dict(torch.load(data_path / model_template.substitute(which="fi", fold=k), map_location='cpu'))
-    model_bi = MLPModel(input_length, x_factor).to(device)
-    model_bi.load_state_dict(torch.load(data_path / model_template.substitute(which="bi", fold=k), map_location='cpu'))
+    model_fi = MLPModel(input_length).to(device)
+    model_fi.load_state_dict(torch.load(models_path / f"fi_rate_k{k}_model", map_location='cpu'))
+    model_bi = MLPModel(input_length).to(device)
+    model_bi.load_state_dict(torch.load(models_path / f"bi_rate_k{k}_model", map_location='cpu'))
     with torch.no_grad():
         model_fi.eval()
         model_bi.eval()

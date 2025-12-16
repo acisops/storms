@@ -12,6 +12,8 @@ from plotly.subplots import make_subplots
 from IPython import embed
 import joblib
 from sklearn.metrics import mean_squared_error
+from lime.lime_tabular import LimeTabularExplainer
+from collections import defaultdict
 
 
 # Verify MPS support
@@ -26,10 +28,11 @@ base_path = Path(__file__).parent
 
 
 def permutation_importance(model, X_val, y_val, loss_fn):
+    X_val = torch.from_numpy(X_val).to(device, torch.float32)
     model.eval()
     with torch.no_grad():
-        baseline_preds = model(X_val)
-        baseline_loss = loss_fn(baseline_preds, y_val).item()
+        baseline_preds = model(X_val).squeeze().cpu().detach().numpy()
+        baseline_loss = loss_fn(baseline_preds, y_val)
 
     importances = []
     for i in range(X_val.shape[1]):
@@ -37,12 +40,23 @@ def permutation_importance(model, X_val, y_val, loss_fn):
         X_permuted[:, i] = X_permuted[:, i][torch.randperm(X_permuted.size(0))]
 
         with torch.no_grad():
-            permuted_preds = model(X_permuted)
-            permuted_loss = loss_fn(permuted_preds, y_val).item()
+            permuted_preds = model(X_permuted).squeeze().cpu().detach().numpy()
+            permuted_loss = loss_fn(permuted_preds, y_val)
 
         importances.append(permuted_loss - baseline_loss)
 
     return np.array(importances)
+
+
+def make_predict_fn(model):
+    model.eval()
+    def _predict_fn(x_numpy):
+        x_tensor = torch.from_numpy(x_numpy).to(device, torch.float32)
+        with torch.no_grad():
+            preds = model(x_tensor).squeeze().cpu().detach().numpy()
+        return preds
+    return _predict_fn
+
 
 def find_near_detections(y_data, limits, tolerance=-10):
     # tolerance is negative so that anything near OR OVER the limit will be boosted
@@ -81,7 +95,6 @@ def data_augmentation(
     data_index,
     near_detections_ids,
     epsilon=1e-4,
-    x_increase=1,
 ):
     input_length = X_data.shape[1]
 
@@ -107,61 +120,26 @@ def data_augmentation(
     # randomly select that many from available set
     aug_data_ids = rng.choice(data_ids, size=N_balancer)
 
-    if x_increase == 1:
-        # initialize new arrays
-        X_aug_data = np.empty((N_aug_tot, input_length))
-        y_aug_data = np.empty(N_aug_tot)
+    # initialize new arrays
+    X_aug_data = np.empty((N_aug_tot, input_length))
+    y_aug_data = np.empty(N_aug_tot)
 
-        # create new dataset index array
-        data_index_aug = np.empty(N_aug_tot, dtype=int)
-        data_index_aug[:n_data_index] = data_index
-        data_index_aug[n_data_index:] = data_index[aug_data_ids]
+    # create new dataset index array
+    data_index_aug = np.empty(N_aug_tot, dtype=int)
+    data_index_aug[:n_data_index] = data_index
+    data_index_aug[n_data_index:] = data_index[aug_data_ids]
 
-        # copy old data into new arrays
-        X_aug_data[:n_data_index] = X_data.copy()
-        y_aug_data[:n_data_index] = y_data.copy()
+    # copy old data into new arrays
+    X_aug_data[:n_data_index] = X_data.copy()
+    y_aug_data[:n_data_index] = y_data.copy()
 
-        # add new data into new arrays
-        X_aug_data[n_data_index:] = X_data[aug_data_ids] + (
-            epsilon * rng.normal(size=(N_balancer, input_length))
-        )
-        y_aug_data[n_data_index:] = y_data[aug_data_ids] + (
-            epsilon * rng.normal(size=N_balancer)
-        )
-    else:
-        # initialize new arrays
-        X_aug_data = np.empty((x_increase * N_aug_tot, input_length))
-        y_aug_data = np.empty(x_increase * N_aug_tot)
-
-        X_aug_data_xth = np.empty((N_aug_tot, input_length))
-        y_aug_data_xth = np.empty(N_aug_tot)
-
-        # create new dataset index array
-        data_index_aug = np.empty(x_increase * N_aug_tot, dtype=int)
-        data_index_aug_xth = np.empty(N_aug_tot, dtype=int)
-        data_index_aug_xth[:n_data_index] = data_index
-        data_index_aug_xth[n_data_index:] = data_index[aug_data_ids]
-
-        # copy old data into new arrays
-        X_aug_data_xth[:n_data_index] = X_data.copy()
-        y_aug_data_xth[:n_data_index] = y_data.copy()
-
-        # add new data into new arrays
-        X_aug_data_xth[n_data_index:] = X_data[aug_data_ids] + (
-            epsilon * rng.normal(size=(N_balancer, input_length))
-        )
-        y_aug_data_xth[n_data_index:] = y_data[aug_data_ids] + (
-            epsilon * rng.normal(size=N_balancer)
-        )
-
-        for i in range(x_increase):
-            data_index_aug[i * N_aug_tot : (i + 1) * N_aug_tot] = data_index_aug_xth
-            X_aug_data[i * N_aug_tot : (i + 1) * N_aug_tot] = X_aug_data_xth + (
-                epsilon * rng.normal(size=(N_aug_tot, input_length))
-            )
-            y_aug_data[i * N_aug_tot : (i + 1) * N_aug_tot] = y_aug_data_xth + (
-                epsilon * rng.normal(size=N_aug_tot)
-            )
+    # add new data into new arrays
+    X_aug_data[n_data_index:] = X_data[aug_data_ids] + (
+        epsilon * rng.normal(size=(N_balancer, input_length))
+    )
+    y_aug_data[n_data_index:] = y_data[aug_data_ids] + (
+        epsilon * rng.normal(size=N_balancer)
+    )
 
     return X_aug_data, y_aug_data, data_index_aug
 
@@ -344,7 +322,7 @@ def training_loop(
         val_test = val_loss[k]
         if val_test < val_min:
             val_min = val_test
-            file_name = base_path / f"Models/{model_name}_min_epoch"
+            file_name = base_path / f"Models/{model_name}"
             torch.save(model.state_dict(), file_name)
             last_min_epoch = k + 1
             count = 0
@@ -382,8 +360,6 @@ def k_fold_train_test(
     lr_factor=1e3,
     max_count=50,
     batch_size=32,
-    x_factor=10,
-    data_increase_factor=1,
     no_train=False,
     rng=None,
 ):
@@ -422,39 +398,33 @@ def k_fold_train_test(
     lr = 1e-2 / lr_factor
 
     if no_train:
-        #means = np.load(f"means_{which_rate}.npz")
-        #scaler_x = LogHyperbolicTangentScaler(mean=means["x"])
-        scaler_x = joblib.load(f"scaler_{which_rate}_x.pkl")
-        scaler_y = joblib.load(f"scaler_{which_rate}_y.pkl")
+        scaler_x = joblib.load(base_path / f"Models/scaler_{which_rate}_x.pkl")
+        scaler_y = joblib.load(base_path / f"Models/scaler_{which_rate}_y.pkl")
         X_data_norm = scaler_x.transform(X_data)
         y_data_norm = scaler_y.transform(y_data)
     else:
-        #scaler_x = LogHyperbolicTangentScaler()
         scaler_x = MultiScaler(X.columns.tolist())
         scaler_y = LogHyperbolicTangentScaler()
         X_data_norm = scaler_x.fit_transform(X_data)
         y_data_norm = scaler_y.fit_transform(y_data)
-        joblib.dump(scaler_x, f"scaler_{which_rate}_x.pkl")
-        joblib.dump(scaler_y, f"scaler_{which_rate}_y.pkl")
-        #np.savez(f"means_{which_rate}.npz", x=scaler_x._mean, y=scaler_y._mean)
+        joblib.dump(scaler_x, base_path / f"Models/scaler_{which_rate}_x.pkl")
+        joblib.dump(scaler_y, base_path / f"Models/scaler_{which_rate}_y.pkl")
 
     X_test, y_test, test_index = test_split(X_data_norm, y_data_norm, index_11_fold)
     test_length = len(X_test)
 
     for k in range(k_start, k_stop):
-        model_name = f"{which_rate}_k{k}_{x_factor}x_model_{int(lr_factor)}_learning_rate_max_stop_{max_count}_DATA_AUG_{data_increase_factor}x"
+        model_name = f"{which_rate}_k{k}_model"
 
         X_train, y_train, X_val, y_val, val_index, train_index = train_val_split(
             X_data_norm, y_data_norm, index_11_fold, k
         )
 
-        X_train, y_train, train_index = data_augmentation(X_train, y_train, train_index, near_detections_ids, x_increase=data_increase_factor)
-        X_val, y_val, val_index = data_augmentation(X_val, y_val, val_index, near_detections_ids, x_increase=data_increase_factor)
+        X_train, y_train, train_index = data_augmentation(X_train, y_train, train_index, near_detections_ids)
+        X_val, y_val, val_index = data_augmentation(X_val, y_val, val_index, near_detections_ids)
 
         train_length = len(X_train)
         val_length = len(X_val)
-
-        importances = permutation_importance(model, X_val, y_val, mean_squared_error)
         
         train_batch_indices = np.arange(train_length // batch_size, dtype=int)
         train_indices = np.arange(train_length, dtype=int)
@@ -468,7 +438,7 @@ def k_fold_train_test(
         test_indices = np.arange(test_length, dtype=int)
         test_max_batch_index = test_batch_indices[-1]
 
-        model = MLPModel(input_length, x_factor).to(device)
+        model = MLPModel(input_length).to(device)
 
         if not no_train:
             # Initialize the model
@@ -503,23 +473,44 @@ def k_fold_train_test(
                 max_count,
             )
 
-        """
-        # Suppose your training features are in a PyTorch tensor
-        # Shape: (n_samples, n_features)
-        X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device=device)
-        X_val_tensor = torch.tensor(X_val, dtype=torch.float32, device=device)
+        model.load_state_dict(torch.load(base_path / f"Models/{model_name}"))
 
-        n_background = 100
-        idx = np.random.choice(len(X_train_tensor), size=n_background, replace=False)
-        background_data_tensor = X_train_tensor[idx]
-        """
+        importances = permutation_importance(model, X_val, y_val, mean_squared_error)
+        np.savez(f"{which_rate}_k{k}_importances.npz", importances)
 
-        model.load_state_dict(torch.load(base_path / f"Models/{model_name}_min_epoch"))
+        explainer = LimeTabularExplainer(
+            training_data=X_train,  # unscaled or scaled — match what model expects
+            feature_names=feature_names,
+            mode='regression',  # or 'classification' if needed
+            discretize_continuous=True,  # makes explanations more readable
+            random_state=42
+        )
 
-        """
-        model.eval()
+        contrib_dict = defaultdict(list)
 
-        """
+        near_detections_ids = find_near_detections(y_data, y_limit)
+
+        for i in range(val_length):
+            exp = explainer.explain_instance(
+                data_row=X_val[i],
+                predict_fn=make_predict_fn(model),
+                num_features=len(feature_names)
+            )
+            for feature, weight in exp.as_list():
+                contrib_dict[feature].append(abs(weight))  # abs to measure strength
+
+        mean_contrib = {feat: np.mean(vals) for feat, vals in contrib_dict.items()}
+
+        sorted_feats = sorted(mean_contrib.items(), key=lambda x: x[1], reverse=True)
+        labels, values = zip(*sorted_feats)
+
+        fig, ax = plt.figure(figsize=(10, 6))
+        ax.barh(labels, values)
+        ax.set_xlabel("Mean absolute contribution (LIME)")
+        ax.set_title("LIME-Averaged Feature Importance")
+        ax.invert_yaxis()
+        fig.tight_layout()
+        fig.savefig(f"{which_rate}_k{k}_lime.png", dpi=300)
 
         # begin analysis of trained model
         y_train_pred = np.empty(y_train.shape)
@@ -860,5 +851,5 @@ print(add_cols)
 t_new = transform_goes(t[add_cols])
 df = t_new.to_pandas()
 
-k_fold_train_test(df, which_rate, new_index=True, no_train=False, rng=rng)
+k_fold_train_test(df, which_rate, new_index=False, no_train=True, rng=rng)
 
