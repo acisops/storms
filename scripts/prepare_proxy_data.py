@@ -8,7 +8,6 @@ from scipy.ndimage import uniform_filter1d
 from storms import SolarWind
 from storms.txings_proxy.utils import goes_path
 
-
 t = Table.read(goes_path / "goes_16_18.fits")
 
 print(CxoTime(t["time"][0]).yday, CxoTime(t["time"][-1]).yday)
@@ -30,9 +29,9 @@ for obsid in obsids:
         continue
     obsid_info = get_ocat_local(obsid=obsid)
     if (
-            obsid_info["grat"] in ["LETG", "HETG"]
-            and obsid_info["instr"].startswith("ACIS")
-            or obsid_info["simode"].startswith("CC_")
+        obsid_info["grat"] in ["LETG", "HETG"]
+        and obsid_info["instr"].startswith("ACIS")
+        or obsid_info["simode"].startswith("CC_")
     ):
         bright_obsids.append(obsid)
 
@@ -90,12 +89,16 @@ for col in chandra_ephems:
         mask = fi_rate_table["obsid"] == obsid
         if mask.sum() == 0:
             continue
-        fi_rate_table[col][mask] = np.interp(fi_rate_table["time"][mask], msids[col].times, msids[col].vals)
+        fi_rate_table[col][mask] = np.interp(
+            fi_rate_table["time"][mask], msids[col].times, msids[col].vals
+        )
     for obsid in obsids:
         mask = bi_rate_table["obsid"] == obsid
         if mask.sum() == 0:
             continue
-        bi_rate_table[col][mask] = np.interp(bi_rate_table["time"][mask], msids[col].times, msids[col].vals)
+        bi_rate_table[col][mask] = np.interp(
+            bi_rate_table["time"][mask], msids[col].times, msids[col].vals
+        )
 
 fi_rate_table.write("fi_rate_table.fits", format="fits", overwrite=True)
 bi_rate_table.write("bi_rate_table.fits", format="fits", overwrite=True)

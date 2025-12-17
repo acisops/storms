@@ -1,16 +1,17 @@
+from argparse import ArgumentParser
+from pathlib import Path
+
+import astropy.units as u
 import joblib
 import numpy as np
 import torch
-import astropy.units as u
-from argparse import ArgumentParser
 from astropy.table import Table, vstack
 from cheta import fetch_sci as fetch
 from cxotime import CxoTime
-from pathlib import Path
 from scipy.ndimage import uniform_filter1d
 
 from storms.txings_proxy.realtime import get_realtime_goes
-from storms.txings_proxy.utils import goes_bands, MLPModel
+from storms.txings_proxy.utils import MLPModel, goes_bands
 from storms.utils import base_path
 
 models_path = base_path / "txings_proxy/Models"
@@ -22,34 +23,27 @@ parser = ArgumentParser(
 )
 
 parser.add_argument(
-    "--out_file", type=str, default="/data/acis/txings/txings_proxy.fits",
-    help="The path of the file to be written."
+    "--out_file",
+    type=str,
+    default="/data/acis/txings/txings_proxy.fits",
+    help="The path of the file to be written.",
 )
 
 parser.add_argument(
-    "--use_historical", action="store_true",
-    help="Use historical data."
+    "--use_historical", action="store_true", help="Use historical data."
+)
+
+parser.add_argument("--use_7day", action="store_true", help="Use 7-day file.")
+
+parser.add_argument(
+    "--overwrite_table", action="store_true", help="Overwrite the table."
 )
 
 parser.add_argument(
-    "--use_7day", action="store_true",
-    help="Use 7-day file."
+    "--start", type=str, help="The start time, if using historical data."
 )
 
-parser.add_argument(
-    "--overwrite_table", action="store_true",
-    help="Overwrite the table."
-)
-
-parser.add_argument(
-    "--start", type=str,
-    help="The start time, if using historical data."
-)
-
-parser.add_argument(
-    "--stop", type=str,
-    help="The stop time, if using historical data."
-)
+parser.add_argument("--stop", type=str, help="The stop time, if using historical data.")
 
 args = parser.parse_args()
 
@@ -103,25 +97,62 @@ else:
         raise RuntimeError("All realtime GOES data were bad!!")
     t_goes = t_goes[good]
     ephem_stop = CxoTime()
-    ephem_start = ephem_stop - 8.0*u.day
+    ephem_start = ephem_stop - 8.0 * u.day
     if not start_over:
         t_exist = Table.read(p)
         t_exist = t_exist[t_exist["time"] < t_goes["time"][0]]
     else:
         t_exist = None
 
-ephem_msids = ['orbitephem0_x', 'orbitephem0_y', 'orbitephem0_z', 'solarephem0_x', 'solarephem0_y', 'solarephem0_z']
+ephem_msids = [
+    "orbitephem0_x",
+    "orbitephem0_y",
+    "orbitephem0_z",
+    "solarephem0_x",
+    "solarephem0_y",
+    "solarephem0_z",
+]
 ephem_data = fetch.MSIDset(ephem_msids, ephem_start, ephem_stop, stat="5min")
 
 for msid in ephem_msids:
-    t_goes[msid] = np.interp(t_goes["time"], ephem_data[msid].times, ephem_data[msid].vals)
+    t_goes[msid] = np.interp(
+        t_goes["time"], ephem_data[msid].times, ephem_data[msid].vals
+    )
 
-use_cols = ['P1_g16_E', 'P2A_g16_E', 'P2B_g16_E', 'P3_g16_E', 'P4_g16_E',
-            'P5_g16_E', 'P6_g16_E', 'P7_g16_E', 'P8A_g16_E', 'P8B_g16_E',
-            'P8C_g16_E', 'P9_g16_E', 'P10_g16_E', 'P1_g18_E', 'P2A_g18_E',
-            'P2B_g18_E', 'P3_g18_E', 'P4_g18_E', 'P5_g18_E', 'P6_g18_E', 'P7_g18_E',
-            'P8A_g18_E', 'P8B_g18_E', 'P8C_g18_E', 'P9_g18_E', 'P10_g18_E',
-            'orbitephem0_x', 'orbitephem0_y', 'orbitephem0_z', 'solarephem0_x', 'solarephem0_y', 'solarephem0_z']
+use_cols = [
+    "P1_g16_E",
+    "P2A_g16_E",
+    "P2B_g16_E",
+    "P3_g16_E",
+    "P4_g16_E",
+    "P5_g16_E",
+    "P6_g16_E",
+    "P7_g16_E",
+    "P8A_g16_E",
+    "P8B_g16_E",
+    "P8C_g16_E",
+    "P9_g16_E",
+    "P10_g16_E",
+    "P1_g18_E",
+    "P2A_g18_E",
+    "P2B_g18_E",
+    "P3_g18_E",
+    "P4_g18_E",
+    "P5_g18_E",
+    "P6_g18_E",
+    "P7_g18_E",
+    "P8A_g18_E",
+    "P8B_g18_E",
+    "P8C_g18_E",
+    "P9_g18_E",
+    "P10_g18_E",
+    "orbitephem0_x",
+    "orbitephem0_y",
+    "orbitephem0_z",
+    "solarephem0_x",
+    "solarephem0_y",
+    "solarephem0_z",
+]
 
 df = t_goes[use_cols].to_pandas()
 
@@ -131,7 +162,9 @@ for col in df.columns:
     if col.startswith("P"):
         prefix = col.split("_")[0]
         i = use_cols.index(col)
-        df[col] = uniform_filter1d(df[col], 10, axis=0) * (goes_bands[prefix][1] - goes_bands[prefix][0])
+        df[col] = uniform_filter1d(df[col], 10, axis=0) * (
+            goes_bands[prefix][1] - goes_bands[prefix][0]
+        )
 
 X = np.array(df)
 
@@ -144,11 +177,17 @@ y_inv_fi = []
 y_inv_bi = []
 for k in range(n_folds):
     model_fi = MLPModel(input_length).to(device)
-    model_fi.load_state_dict(torch.load(models_path / f"fi_rate_k{k}_model", map_location='cpu',
-                                        weights_only=True))
+    model_fi.load_state_dict(
+        torch.load(
+            models_path / f"fi_rate_k{k}_model", map_location="cpu", weights_only=True
+        )
+    )
     model_bi = MLPModel(input_length).to(device)
-    model_bi.load_state_dict(torch.load(models_path / f"bi_rate_k{k}_model", map_location='cpu',
-                                        weights_only=True))
+    model_bi.load_state_dict(
+        torch.load(
+            models_path / f"bi_rate_k{k}_model", map_location="cpu", weights_only=True
+        )
+    )
     with torch.no_grad():
         model_fi.eval()
         model_bi.eval()

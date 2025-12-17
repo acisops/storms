@@ -1,6 +1,5 @@
-from astropy.io import ascii
 import h5py
-from IPython import embed
+from astropy.io import ascii
 
 names = [
     "processing_phase",
@@ -23,7 +22,7 @@ names = [
 
 t = ascii.read("xings.txt", names=names)
 
-#embed()
+# embed()
 
 with h5py.File("xings.h5", "w") as f:
     for name in names:

@@ -1,10 +1,11 @@
-import requests
 import time
-import sys
 from collections import defaultdict
+
 import numpy as np
+import requests
 from astropy.table import Table, vstack
 from astropy.time import Time
+
 from storms.txings_proxy.utils import coeffs_16_19
 
 goes_url_base = "https://services.swpc.noaa.gov/json/goes/"
@@ -42,7 +43,7 @@ def format_goes_proton_data(dat):
     # Create a dictionary to capture the channel data for each time
     out = defaultdict(dict)
     for row in dat:
-        satellite = 16 if row['satellite'] == 19 else row['satellite']
+        satellite = 16 if row["satellite"] == 19 else row["satellite"]
         out[row["time_tag"]][f"{row['channel'].upper()}_g{satellite}_E"] = row["flux"]
         out[row["time_tag"]]["yaw_flip"] = row["yaw_flip"]
 
@@ -55,7 +56,7 @@ def format_goes_proton_data(dat):
 
     # Add some time columns
     times = Time(newdat["time_tag"])
-    newdat["time"] = times.cxcsec-60
+    newdat["time"] = times.cxcsec - 60
     newdat["mjd"] = times.mjd.astype(int)
     newdat["secs"] = np.array(
         np.round((times.mjd - newdat["mjd"]) * 86400, decimals=0)

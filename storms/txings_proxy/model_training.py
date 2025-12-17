@@ -1,20 +1,24 @@
 import time
-from storms.txings_proxy.utils import MLPModel, transform_goes, LogHyperbolicTangentScaler, MultiScaler
-from astropy.table import Table
-import numpy as np
-import matplotlib.pyplot as plt
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from pathlib import Path
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from IPython import embed
-import joblib
-from sklearn.metrics import mean_squared_error
-from lime.lime_tabular import LimeTabularExplainer
 from collections import defaultdict
+from pathlib import Path
 
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
+import torch
+from astropy.table import Table
+from lime.lime_tabular import LimeTabularExplainer
+from plotly.subplots import make_subplots
+from sklearn.metrics import mean_squared_error
+from torch import nn, optim
+
+from storms.txings_proxy.utils import (
+    LogHyperbolicTangentScaler,
+    MLPModel,
+    MultiScaler,
+    transform_goes,
+)
 
 # Verify MPS support
 if torch.backends.mps.is_available():
@@ -50,11 +54,13 @@ def permutation_importance(model, X_val, y_val, loss_fn):
 
 def make_predict_fn(model):
     model.eval()
+
     def _predict_fn(x_numpy):
         x_tensor = torch.from_numpy(x_numpy).to(device, torch.float32)
         with torch.no_grad():
             preds = model(x_tensor).squeeze().cpu().detach().numpy()
         return preds
+
     return _predict_fn
 
 
@@ -77,7 +83,14 @@ def train_val_split(X, y, index_11_fold, k):
     y_val = y[val_index]
     X_train = X[train_index]
     y_train = y[train_index]
-    return X_train, y_train, X_val, y_val, np.where(val_index)[0], np.where(train_index)[0]
+    return (
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        np.where(val_index)[0],
+        np.where(train_index)[0],
+    )
 
 
 def batch_retriever(index, max_batch_index, batch_size):
@@ -87,7 +100,7 @@ def batch_retriever(index, max_batch_index, batch_size):
         return index * batch_size, index * batch_size + batch_size
 
 
-# function that increases the number of ~limit detections and generally 
+# function that increases the number of ~limit detections and generally
 # expands data set. Use only for training and validation.
 def data_augmentation(
     X_data,
@@ -202,7 +215,6 @@ def training_loop(
     test_length,
     max_count,
 ):
-
     start = time.time()
     print(model_name, " training start")
     val_min = 1e4
@@ -354,7 +366,7 @@ def training_loop(
 def k_fold_train_test(
     df,
     which_rate,
-    new_index=False, # Need new index for k-folds?
+    new_index=False,  # Need new index for k-folds?
     k_start=0,
     k_stop=10,
     lr_factor=1e3,
@@ -363,7 +375,6 @@ def k_fold_train_test(
     no_train=False,
     rng=None,
 ):
-
     if rng is None:
         rng = np.random.default_rng()
 
@@ -420,12 +431,16 @@ def k_fold_train_test(
             X_data_norm, y_data_norm, index_11_fold, k
         )
 
-        X_train, y_train, train_index = data_augmentation(X_train, y_train, train_index, near_detections_ids)
-        X_val, y_val, val_index = data_augmentation(X_val, y_val, val_index, near_detections_ids)
+        X_train, y_train, train_index = data_augmentation(
+            X_train, y_train, train_index, near_detections_ids
+        )
+        X_val, y_val, val_index = data_augmentation(
+            X_val, y_val, val_index, near_detections_ids
+        )
 
         train_length = len(X_train)
         val_length = len(X_val)
-        
+
         train_batch_indices = np.arange(train_length // batch_size, dtype=int)
         train_indices = np.arange(train_length, dtype=int)
         train_max_batch_index = train_batch_indices[-1]
@@ -481,9 +496,9 @@ def k_fold_train_test(
         explainer = LimeTabularExplainer(
             training_data=X_train,  # unscaled or scaled — match what model expects
             feature_names=feature_names,
-            mode='regression',  # or 'classification' if needed
+            mode="regression",  # or 'classification' if needed
             discretize_continuous=True,  # makes explanations more readable
-            random_state=42
+            random_state=42,
         )
 
         contrib_dict = defaultdict(list)
@@ -494,7 +509,7 @@ def k_fold_train_test(
             exp = explainer.explain_instance(
                 data_row=X_val[i],
                 predict_fn=make_predict_fn(model),
-                num_features=len(feature_names)
+                num_features=len(feature_names),
             )
             for feature, weight in exp.as_list():
                 contrib_dict[feature].append(abs(weight))  # abs to measure strength
@@ -502,7 +517,7 @@ def k_fold_train_test(
         mean_contrib = {feat: np.mean(vals) for feat, vals in contrib_dict.items()}
 
         sorted_feats = sorted(mean_contrib.items(), key=lambda x: x[1], reverse=True)
-        labels, values = zip(*sorted_feats)
+        labels, values = zip(*sorted_feats, strict=True)
 
         fig, ax = plt.figure(figsize=(10, 6))
         ax.barh(labels, values)
@@ -523,7 +538,9 @@ def k_fold_train_test(
                 j0, jf = batch_retriever(
                     train_batch_indices[i], train_max_batch_index, batch_size
                 )
-                x_batch = torch.from_numpy(X_train[train_indices[j0:jf]]).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_train[train_indices[j0:jf]]).to(
+                    device, torch.float32
+                )
                 # ===================forward=====================
                 y_train_pred[train_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -535,7 +552,9 @@ def k_fold_train_test(
                 j0, jf = batch_retriever(
                     val_batch_indices[i], val_max_batch_index, batch_size
                 )
-                x_batch = torch.from_numpy(X_val[val_indices[j0:jf]]).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_val[val_indices[j0:jf]]).to(
+                    device, torch.float32
+                )
                 # ===================forward=====================
                 y_val_pred[val_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -547,7 +566,9 @@ def k_fold_train_test(
                 j0, jf = batch_retriever(
                     test_batch_indices[i], test_max_batch_index, batch_size
                 )
-                x_batch = torch.from_numpy(X_test[test_indices[j0:jf]]).to(device, torch.float32)
+                x_batch = torch.from_numpy(X_test[test_indices[j0:jf]]).to(
+                    device, torch.float32
+                )
                 # ===================forward=====================
                 y_test_pred[test_indices[j0:jf]] = (
                     model(x_batch).squeeze().cpu().detach().numpy()
@@ -567,7 +588,8 @@ def k_fold_train_test(
             axes[0].plot(y_train_inv, y_train_pred_inv, ".")
             equal_line_train = np.linspace(0, np.max(y_train_inv))
             axes[0].plot(
-                equal_line_train, equal_line_train,
+                equal_line_train,
+                equal_line_train,
                 color="k",
                 linestyle="dashed",
             )
@@ -577,7 +599,8 @@ def k_fold_train_test(
             axes[1].plot(y_val_inv, y_val_pred_inv, ".")
             equal_line_val = np.linspace(0, np.max(y_val_inv))
             axes[1].plot(
-                equal_line_val, equal_line_val,
+                equal_line_val,
+                equal_line_val,
                 color="k",
                 linestyle="dashed",
             )
@@ -587,7 +610,8 @@ def k_fold_train_test(
             axes[2].plot(y_test_inv, y_test_pred_inv, ".")
             equal_line_test = np.linspace(0, np.max(y_test_inv))
             axes[2].plot(
-                equal_line_test, equal_line_test,
+                equal_line_test,
+                equal_line_test,
                 color="k",
                 linestyle="dashed",
             )
@@ -608,36 +632,80 @@ def k_fold_train_test(
             limit_train = np.array(df.loc[train_index, f"{which_rate}_limit"])
 
             # Create a 1-row, 3-column subplot figure
-            fig = make_subplots(rows=1, cols=3, subplot_titles=("Train Set", "Val Set", "Test Set"))
+            fig = make_subplots(
+                rows=1, cols=3, subplot_titles=("Train Set", "Val Set", "Test Set")
+            )
 
             # Plot Train Set
             fig.add_trace(
-                go.Scatter(x=time_train, y=y_train_inv, mode='markers', name='True (Train)', opacity=0.5),
-                row=1, col=1
+                go.Scatter(
+                    x=time_train,
+                    y=y_train_inv,
+                    mode="markers",
+                    name="True (Train)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=1,
             )
             fig.add_trace(
-                go.Scatter(x=time_train, y=y_train_pred_inv, mode='markers', name='Pred (Train)', opacity=0.5),
-                row=1, col=1
+                go.Scatter(
+                    x=time_train,
+                    y=y_train_pred_inv,
+                    mode="markers",
+                    name="Pred (Train)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=1,
             )
 
             # Plot Validation Set
             fig.add_trace(
-                go.Scatter(x=time_val, y=y_val_inv, mode='markers', name='True (Val)', opacity=0.5),
-                row=1, col=2
+                go.Scatter(
+                    x=time_val,
+                    y=y_val_inv,
+                    mode="markers",
+                    name="True (Val)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=2,
             )
             fig.add_trace(
-                go.Scatter(x=time_val, y=y_val_pred_inv, mode='markers', name='Pred (Val)', opacity=0.5),
-                row=1, col=2
+                go.Scatter(
+                    x=time_val,
+                    y=y_val_pred_inv,
+                    mode="markers",
+                    name="Pred (Val)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=2,
             )
 
             # Plot Test Set
             fig.add_trace(
-                go.Scatter(x=time_test, y=y_test_inv, mode='markers', name='True (Test)', opacity=0.5),
-                row=1, col=3
+                go.Scatter(
+                    x=time_test,
+                    y=y_test_inv,
+                    mode="markers",
+                    name="True (Test)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=3,
             )
             fig.add_trace(
-                go.Scatter(x=time_test, y=y_test_pred_inv, mode='markers', name='Pred (Test)', opacity=0.5),
-                row=1, col=3
+                go.Scatter(
+                    x=time_test,
+                    y=y_test_pred_inv,
+                    mode="markers",
+                    name="Pred (Test)",
+                    opacity=0.5,
+                ),
+                row=1,
+                col=3,
             )
 
             # Set common axis titles
@@ -650,9 +718,10 @@ def k_fold_train_test(
 
             # Layout and legend
             fig.update_layout(
-                width=1200, height=400,
+                width=1200,
+                height=400,
                 title_text=f"{model_name} Predictions",
-                showlegend=True
+                showlegend=True,
             )
 
             # To save as HTML
@@ -852,4 +921,3 @@ t_new = transform_goes(t[add_cols])
 df = t_new.to_pandas()
 
 k_fold_train_test(df, which_rate, new_index=False, no_train=True, rng=rng)
-
