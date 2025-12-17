@@ -458,7 +458,6 @@ class SolarWind:
             first = False
         for k in self.rates:
             self.rates[k] = np.concatenate(self.rates[k])
-        #print(self.rates["fi_rate"])
         plot = CustomDatePlot(self.rates["times"], self.rates["fi_rate"]*0.01, 
                               fmt='.', label="FI Rate", color="C0", lw=0, plot=plot)
         CustomDatePlot(self.rates["times"], self.rates["bi_rate"]*0.01, 

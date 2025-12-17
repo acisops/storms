@@ -1,9 +1,6 @@
 storms.egg-info
 __pycache__
-doc/build
 .eggs
 .vscode
 .idea
-json/*.pdf
-json/*.png
 scripts/*.png

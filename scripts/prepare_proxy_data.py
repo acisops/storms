@@ -3,55 +3,13 @@ from astropy.table import Table
 from cheta import fetch_sci as fetch
 from cxotime import CxoTime
 from mica.archive.cda import get_ocat_local
-from numpy.testing import assert_allclose
 from scipy.ndimage import uniform_filter1d
-import numpy.ma as ma
 
 from storms import SolarWind
-from storms.txings_proxy.utils import goes_path, coeffs_16_19
+from storms.txings_proxy.utils import goes_path
 
-t16 = Table.read(goes_path / "goes_16.fits")
-t18 = Table.read(goes_path / "goes_18.fits")
-t19 = Table.read(goes_path / "goes_19.fits")
 
-print(CxoTime(t18["time"][0]).yday, CxoTime(t18["time"][-1]).yday)
-
-t = Table()
-for col in t16.colnames:
-    print(col)
-    a = t16[col][
-        (t16["time"] >= t18["time"][0]) & (t16["time"] < CxoTime("2025:097").secs)
-        ]
-    b = t19[col][t19["time"] >= CxoTime("2025:097").secs]
-    if col.startswith("P"):
-        coeff = coeffs_16_19[col]
-    else:
-        coeff = 1.0
-    t[f"{col}_g16"] = ma.append(a, coeff * b, axis=0)
-for col in t18.colnames:
-    a = t18[col][t18["time"] >= t18["time"][0]]
-    t[f"{col}_g18"] = a
-all_bad = np.zeros(len(t), dtype=bool)
-
-for col in t.colnames:
-    if "time" in col or "yaw" in col:
-        continue
-    if col.startswith("P"):
-        bad = t[col].mask.sum(axis=1).astype("bool")
-    elif "ephem" in col:
-        bad = t[col].mask.astype("bool")
-    #else:
-    #    bad = np.zeros_like(t[col])
-    all_bad = all_bad | bad
-    print(col, all_bad.sum(), bad.sum(), t[col].shape)
-print(len(t), all_bad.sum())
-t = t[~all_bad]
-assert_allclose(t["time_g16"], t["time_g18"])
-t["time"] = t["time_g16"].copy()
-# for col in t.colnames:
-#    print(np.isnan(t[col]).any())
-t.remove_columns(["time_g16", "time_g18"])
-t.write("goes_16_18.fits", overwrite=True)
+t = Table.read(goes_path / "goes_16_18.fits")
 
 print(CxoTime(t["time"][0]).yday, CxoTime(t["time"][-1]).yday)
 
