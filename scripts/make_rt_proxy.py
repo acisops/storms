@@ -1,6 +1,7 @@
 import joblib
 import numpy as np
 import torch
+import astropy.units as u
 from argparse import ArgumentParser
 from astropy.table import Table, vstack
 from cheta import fetch_sci as fetch
@@ -83,40 +84,34 @@ if args.use_historical:
         if col.startswith("P"):
             good &= t_goes[col] >= 0.0
     t_goes = t_goes[good]
+    ephem_start = tstart
+    ephem_stop = tstop
 else:
-    if p.exists() and not args.overwrite_table:
+    start_over = not p.exists() or args.overwrite_table
+    use7d = start_over or args.use_7day
+    t_goes = get_realtime_goes(use7d=use7d)
+    if t_goes is None:
+        t_goes = get_realtime_goes(use7d=True)
+    if t_goes is None:
+        raise RuntimeError("Cannot retrieve realtime GOES data!!")
+    # Remove values that are less than zero
+    good = np.ones(len(t_goes), dtype=bool)
+    for col in t_goes.columns:
+        if col.startswith("P"):
+            good &= t_goes[col] >= 0.0
+    if np.sum(good) == 0:
+        raise RuntimeError("All realtime GOES data were bad!!")
+    t_goes = t_goes[good]
+    ephem_stop = CxoTime()
+    ephem_start = ephem_stop - 8.0*u.day
+    if not start_over:
         t_exist = Table.read(p)
-        break_time = t_exist["time"][-1]
-        use7d = args.use_7day
+        t_exist = t_exist[t_exist["time"] < t_goes["time"][0]]
     else:
-        print("overwrite")
         t_exist = None
-        break_time = -1.0
-        use7d = True
-    t_goes, first_time = get_realtime_goes(break_time, use7d=use7d)
-    if t_exist is not None:
-        if t_goes is None or t_exist["time"][-1] < first_time:
-            t_goes, first_time = get_realtime_goes(break_time, use7d=True)
-        if t_goes is None:
-            t_goes = t_exist
-        else:
-            # Remove values that are less than zero
-            good = np.ones(len(t_goes), dtype=bool)
-            for col in t_goes.columns:
-                if col.startswith("P"):
-                    good &= t_goes[col] >= 0.0
-            if np.sum(good) == 0:
-                t_goes = t_exist
-            else:
-                for col in t_goes.columns:
-                    if col.startswith("P"):
-                        t_goes[col][~good] = np.nan
-                t_goes = vstack([t_exist, t_goes])
 
 ephem_msids = ['orbitephem0_x', 'orbitephem0_y', 'orbitephem0_z', 'solarephem0_x', 'solarephem0_y', 'solarephem0_z']
-ephem_data = fetch.MSIDset(ephem_msids, t_goes["time"][0], t_goes["time"][-1], stat="5min")
-
-print(len(t_goes["time"]))
+ephem_data = fetch.MSIDset(ephem_msids, ephem_start, ephem_stop, stat="5min")
 
 for msid in ephem_msids:
     t_goes[msid] = np.interp(t_goes["time"], ephem_data[msid].times, ephem_data[msid].vals)
@@ -149,9 +144,11 @@ y_inv_fi = []
 y_inv_bi = []
 for k in range(n_folds):
     model_fi = MLPModel(input_length).to(device)
-    model_fi.load_state_dict(torch.load(models_path / f"fi_rate_k{k}_model", map_location='cpu'))
+    model_fi.load_state_dict(torch.load(models_path / f"fi_rate_k{k}_model", map_location='cpu',
+                                        weights_only=True))
     model_bi = MLPModel(input_length).to(device)
-    model_bi.load_state_dict(torch.load(models_path / f"bi_rate_k{k}_model", map_location='cpu'))
+    model_bi.load_state_dict(torch.load(models_path / f"bi_rate_k{k}_model", map_location='cpu',
+                                        weights_only=True))
     with torch.no_grad():
         model_fi.eval()
         model_bi.eval()
@@ -162,4 +159,9 @@ for k in range(n_folds):
 
 t_goes["fi_rate_predict"] = np.mean(y_inv_fi, axis=0)
 t_goes["bi_rate_predict"] = np.mean(y_inv_bi, axis=0)
-t_goes.write(p, overwrite=True)
+
+if t_exist is None:
+    t_final = t_goes
+else:
+    t_final = vstack([t_exist, t_goes])
+t_final.write(p, overwrite=True)
