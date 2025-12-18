@@ -503,9 +503,10 @@ def k_fold_train_test(
 
         contrib_dict = defaultdict(list)
 
-        near_detections_ids = find_near_detections(y_data, y_limit)
+        near_detections_ids = find_near_detections(y_val, y_limit)
+        print("Number of near detections: ", len(near_detections_ids))
 
-        for i in range(val_length):
+        for i in near_detections_ids:
             exp = explainer.explain_instance(
                 data_row=X_val[i],
                 predict_fn=make_predict_fn(model),
