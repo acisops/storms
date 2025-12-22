@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from pathlib import Path
+import numpy as np
 
 import astropy.units as u
 from astropy.table import Table, vstack
@@ -50,7 +51,7 @@ else:
 X = prep_data(t_goes)
 
 for which_rate in ["fi_rate", "bi_rate"]:
-    t_goes[f"{which_rate}_predict"] = run_model(X, which_rate)
+    t_goes[f"{which_rate}_predict"] = np.mean(run_model(X, which_rate), axis=0)
 
 if t_exist is None:
     t_final = t_goes

@@ -156,7 +156,7 @@ class MultiScaler:
 
     def inverse_transform(self, y):
         y = y.copy()
-        y[:, self.lht_cols] = self._mean * (10 ** np.arctanh(y[:, self.lht_cols]) - 1.0)
+        y[:, self.lht_cols] = self.lht_scaler.inverse_transform(y[:, self.lht_cols])
         y[:, self.mm_cols] = self.mm_scaler.inverse_transform(y[:, self.mm_cols])
         return y
 
