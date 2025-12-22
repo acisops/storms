@@ -1,17 +1,17 @@
 from pathlib import Path
-from cheta import fetch_sci as fetch
-from scipy.ndimage import uniform_filter1d
-import astropy.units as u
-from astropy.table import Table
-import torch
-import joblib
-from cxotime import CxoTime
 
+import astropy.units as u
+import joblib
 import numpy as np
+import torch
+from astropy.table import Table
+from cheta import fetch_sci as fetch
+from cxotime import CxoTime
+from scipy.ndimage import uniform_filter1d
 from sklearn.preprocessing import MinMaxScaler
 from torch import nn
-from storms.utils import base_path
 
+from storms.utils import base_path
 
 goes_path = Path("/data/acis/goes")
 
@@ -185,8 +185,8 @@ class MLPModel(nn.Module):
 
 
 def prep_data(t_goes):
-    ephem_start = t_goes["time"][0]-2.0*u.day
-    ephem_stop = t_goes["time"][0]+2.0*u.day
+    ephem_start = t_goes["time"][0] - 2.0 * u.day
+    ephem_stop = t_goes["time"][0] + 2.0 * u.day
 
     ephem_data = fetch.MSIDset(ephem_msids, ephem_start, ephem_stop, stat="5min")
 
@@ -202,18 +202,14 @@ def prep_data(t_goes):
     for col in df.columns:
         if col.startswith("P"):
             prefix = col.split("_")[0]
-            i = use_cols.index(col)
             df[col] = uniform_filter1d(df[col], 10, axis=0) * (
-                    goes_bands[prefix][1] - goes_bands[prefix][0]
+                goes_bands[prefix][1] - goes_bands[prefix][0]
             )
 
-    X = np.array(df)
-
-    return X
+    return np.array(df)
 
 
 def run_model(X, which_rate):
-
     models_path = base_path / "txings_proxy/Models"
 
     scaler_x = joblib.load(models_path / f"scaler_{which_rate}_x.pkl")
@@ -227,7 +223,9 @@ def run_model(X, which_rate):
         model = MLPModel(input_length).to(device)
         model.load_state_dict(
             torch.load(
-                models_path / f"{which_rate}_k{k}_model", map_location="cpu", weights_only=True
+                models_path / f"{which_rate}_k{k}_model",
+                map_location="cpu",
+                weights_only=True,
             )
         )
         with torch.no_grad():

@@ -2,13 +2,11 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import astropy.units as u
-import joblib
 from astropy.table import Table, vstack
 from cxotime import CxoTime
 
 from storms.txings_proxy.realtime import get_realtime_goes
 from storms.txings_proxy.utils import prep_data, run_model
-
 
 parser = ArgumentParser(
     description="Make the real-time GOES-based proxy for ACIS txings."

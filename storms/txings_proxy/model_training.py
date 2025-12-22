@@ -1,5 +1,4 @@
 import time
-from collections import defaultdict
 from pathlib import Path
 
 import joblib
@@ -12,8 +11,6 @@ from captum.attr import IntegratedGradients
 from plotly.subplots import make_subplots
 from sklearn.metrics import mean_squared_error
 from torch import nn, optim
-from tqdm.auto import tqdm
-
 
 from storms.txings_proxy.utils import (
     LogHyperbolicTangentScaler,
@@ -498,12 +495,18 @@ def k_fold_train_test(
         model.eval()
         ig = IntegratedGradients(model)
 
-        near_detections_ids = find_near_detections(scaler_y.inverse_transform(y_val), y_limit[val_index])
+        near_detections_ids = find_near_detections(
+            scaler_y.inverse_transform(y_val), y_limit[val_index]
+        )
         print("Number of near detections: ", len(near_detections_ids))
 
-        x_tensor = torch.from_numpy(X_val[near_detections_ids]).to(device, torch.float32)
+        x_tensor = torch.from_numpy(X_val[near_detections_ids]).to(
+            device, torch.float32
+        )
 
-        attributions, delta = ig.attribute(x_tensor, target=0, return_convergence_delta=True)
+        attributions, delta = ig.attribute(
+            x_tensor, target=0, return_convergence_delta=True
+        )
 
         importance_scores = attributions.abs().mean(dim=0).detach().numpy()
 
@@ -513,31 +516,6 @@ def k_fold_train_test(
         ax.set_title("Feature Importance using Integrated Gradients")
         fig.tight_layout()
         fig.savefig(f"{which_rate}_ig.png", dpi=300)
-
-        """
-        explainer = LimeTabularExplainer(
-            training_data=X_train,  # unscaled or scaled — match what model expects
-            feature_names=feature_names,
-            mode="regression",  # or 'classification' if needed
-            discretize_continuous=True,  # makes explanations more readable
-            random_state=42,
-        )
-
-        near_detections_ids = find_near_detections(scaler_y.inverse_transform(y_val), y_limit[val_index])
-        print("Number of near detections: ", len(near_detections_ids))
-
-        pbar = tqdm(leave=True, total=len(near_detections_ids), desc="Explaining: ")
-        for i in near_detections_ids:
-            exp = explainer.explain_instance(
-                data_row=X_val[i],
-                predict_fn=make_predict_fn(model),
-                num_features=len(feature_names),
-            )
-            for feature, weight in exp.as_list():
-                contrib_dict[feature].append(abs(weight))  # abs to measure strength
-            pbar.update(1)
-        pbar.close()
-        """
 
         # begin analysis of trained model
         y_train_pred = np.empty(y_train.shape)
@@ -914,6 +892,7 @@ def k_fold_train_test(
     fig.tight_layout()
     fig.savefig(f"{which_rate}_lime.png", dpi=300)
     """
+
 
 rng = np.random.default_rng(12345)
 
