@@ -1,8 +1,17 @@
 from pathlib import Path
+from cheta import fetch_sci as fetch
+from scipy.ndimage import uniform_filter1d
+import astropy.units as u
+from astropy.table import Table
+import torch
+import joblib
+from cxotime import CxoTime
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from torch import nn
+from storms.utils import base_path
+
 
 goes_path = Path("/data/acis/goes")
 
@@ -37,6 +46,55 @@ coeffs_16_19 = {
     "P9": 0.756540925797541,
     "P10": 0.7197311497043392,
 }
+
+use_cols = [
+    "P1_g16_E",
+    "P2A_g16_E",
+    "P2B_g16_E",
+    "P3_g16_E",
+    "P4_g16_E",
+    "P5_g16_E",
+    "P6_g16_E",
+    "P7_g16_E",
+    "P8A_g16_E",
+    "P8B_g16_E",
+    "P8C_g16_E",
+    "P9_g16_E",
+    "P10_g16_E",
+    "P1_g18_E",
+    "P2A_g18_E",
+    "P2B_g18_E",
+    "P3_g18_E",
+    "P4_g18_E",
+    "P5_g18_E",
+    "P6_g18_E",
+    "P7_g18_E",
+    "P8A_g18_E",
+    "P8B_g18_E",
+    "P8C_g18_E",
+    "P9_g18_E",
+    "P10_g18_E",
+    "orbitephem0_x",
+    "orbitephem0_y",
+    "orbitephem0_z",
+    "solarephem0_x",
+    "solarephem0_y",
+    "solarephem0_z",
+]
+
+
+ephem_msids = [
+    "orbitephem0_x",
+    "orbitephem0_y",
+    "orbitephem0_z",
+    "solarephem0_x",
+    "solarephem0_y",
+    "solarephem0_z",
+]
+
+input_length = len(use_cols)
+
+n_folds = 10
 
 
 def transform_goes(t_in):
@@ -124,3 +182,69 @@ class MLPModel(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
+
+def prep_data(t_goes):
+    ephem_start = t_goes["time"][0]-2.0*u.day
+    ephem_stop = t_goes["time"][0]+2.0*u.day
+
+    ephem_data = fetch.MSIDset(ephem_msids, ephem_start, ephem_stop, stat="5min")
+
+    for msid in ephem_msids:
+        t_goes[msid] = np.interp(
+            t_goes["time"], ephem_data[msid].times, ephem_data[msid].vals
+        )
+
+    df = t_goes[use_cols].to_pandas()
+
+    # Convert the specific flux to total flux in the band for each channel by multiplying
+    # by the channel width
+    for col in df.columns:
+        if col.startswith("P"):
+            prefix = col.split("_")[0]
+            i = use_cols.index(col)
+            df[col] = uniform_filter1d(df[col], 10, axis=0) * (
+                    goes_bands[prefix][1] - goes_bands[prefix][0]
+            )
+
+    X = np.array(df)
+
+    return X
+
+
+def run_model(X, which_rate):
+
+    models_path = base_path / "txings_proxy/Models"
+
+    scaler_x = joblib.load(models_path / f"scaler_{which_rate}_x.pkl")
+    scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
+
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+    xx = torch.from_numpy(scaler_x.transform(X)).to(device, torch.float32)
+    y_inv = []
+    for k in range(n_folds):
+        model = MLPModel(input_length).to(device)
+        model.load_state_dict(
+            torch.load(
+                models_path / f"{which_rate}_k{k}_model", map_location="cpu", weights_only=True
+            )
+        )
+        with torch.no_grad():
+            model.eval()
+            yy = model(xx).squeeze().cpu().detach().numpy()
+        y_inv.append(scaler_y.inverse_transform(yy))
+
+    return np.mean(y_inv, axis=0)
+
+
+def get_historical_goes(tstart, tstop):
+    t = Table.read("/data/acis/goes/goes_16_18.fits")
+    tstart = CxoTime(tstart).secs
+    tstop = CxoTime(tstop).secs
+    idxs = (t["time"] >= tstart) & (t["time"] <= tstop)
+    t_goes = Table()
+    for col in t.colnames:
+        if col.startswith("P"):
+            t_goes[f"{col}_E"] = t[col][idxs, 0]
+    t_goes["time"] = t["time"][idxs]

@@ -8,10 +8,12 @@ import numpy as np
 import plotly.graph_objects as go
 import torch
 from astropy.table import Table
-from lime.lime_tabular import LimeTabularExplainer
+from captum.attr import IntegratedGradients
 from plotly.subplots import make_subplots
 from sklearn.metrics import mean_squared_error
 from torch import nn, optim
+from tqdm.auto import tqdm
+
 
 from storms.txings_proxy.utils import (
     LogHyperbolicTangentScaler,
@@ -493,6 +495,26 @@ def k_fold_train_test(
         importances = permutation_importance(model, X_val, y_val, mean_squared_error)
         np.savez(f"{which_rate}_k{k}_importances.npz", importances)
 
+        model.eval()
+        ig = IntegratedGradients(model)
+
+        near_detections_ids = find_near_detections(scaler_y.inverse_transform(y_val), y_limit[val_index])
+        print("Number of near detections: ", len(near_detections_ids))
+
+        x_tensor = torch.from_numpy(X_val[near_detections_ids]).to(device, torch.float32)
+
+        attributions, delta = ig.attribute(x_tensor, target=0, return_convergence_delta=True)
+
+        importance_scores = attributions.abs().mean(dim=0).detach().numpy()
+
+        fig, ax = plt.subplots(figsize=(10, 15))
+        ax.barh(feature_names, importance_scores)
+        ax.set_xlabel("Importance Score (Absolute Attribution)")
+        ax.set_title("Feature Importance using Integrated Gradients")
+        fig.tight_layout()
+        fig.savefig(f"{which_rate}_ig.png", dpi=300)
+
+        """
         explainer = LimeTabularExplainer(
             training_data=X_train,  # unscaled or scaled — match what model expects
             feature_names=feature_names,
@@ -501,11 +523,10 @@ def k_fold_train_test(
             random_state=42,
         )
 
-        contrib_dict = defaultdict(list)
-
-        near_detections_ids = find_near_detections(y_val, y_limit)
+        near_detections_ids = find_near_detections(scaler_y.inverse_transform(y_val), y_limit[val_index])
         print("Number of near detections: ", len(near_detections_ids))
 
+        pbar = tqdm(leave=True, total=len(near_detections_ids), desc="Explaining: ")
         for i in near_detections_ids:
             exp = explainer.explain_instance(
                 data_row=X_val[i],
@@ -514,19 +535,9 @@ def k_fold_train_test(
             )
             for feature, weight in exp.as_list():
                 contrib_dict[feature].append(abs(weight))  # abs to measure strength
-
-        mean_contrib = {feat: np.mean(vals) for feat, vals in contrib_dict.items()}
-
-        sorted_feats = sorted(mean_contrib.items(), key=lambda x: x[1], reverse=True)
-        labels, values = zip(*sorted_feats, strict=True)
-
-        fig, ax = plt.figure(figsize=(10, 6))
-        ax.barh(labels, values)
-        ax.set_xlabel("Mean absolute contribution (LIME)")
-        ax.set_title("LIME-Averaged Feature Importance")
-        ax.invert_yaxis()
-        fig.tight_layout()
-        fig.savefig(f"{which_rate}_k{k}_lime.png", dpi=300)
+            pbar.update(1)
+        pbar.close()
+        """
 
         # begin analysis of trained model
         y_train_pred = np.empty(y_train.shape)
@@ -889,6 +900,20 @@ def k_fold_train_test(
             )
             print()
 
+    """
+    mean_contrib = {feat: np.mean(vals) for feat, vals in contrib_dict.items()}
+
+    sorted_feats = sorted(mean_contrib.items(), key=lambda x: x[1], reverse=True)
+    labels, values = zip(*sorted_feats, strict=True)
+
+    fig, ax = plt.subplots(figsize=(10, 15))
+    ax.barh(labels, values)
+    ax.set_xlabel("Mean absolute contribution (LIME)")
+    ax.set_title("LIME-Averaged Feature Importance")
+    ax.invert_yaxis()
+    fig.tight_layout()
+    fig.savefig(f"{which_rate}_lime.png", dpi=300)
+    """
 
 rng = np.random.default_rng(12345)
 
@@ -914,8 +939,6 @@ for col in t.colnames:
         add_cols.append(col)
     if "ephem" in col:
         add_cols.append(col)
-
-print(add_cols)
 
 # Create a new table
 t_new = transform_goes(t[add_cols])

@@ -37,7 +37,7 @@ def get_goes_json_data(url):
 
 def format_goes_proton_data(dat):
     """
-    Manipulate the data and return them in a desired format.
+    Manipulate the realtime GOES data and return them in a desired format.
     """
 
     # Create a dictionary to capture the channel data for each time
@@ -48,7 +48,7 @@ def format_goes_proton_data(dat):
         out[row["time_tag"]]["yaw_flip"] = row["yaw_flip"]
 
     if len(out.keys()) == 0:
-        return None, None
+        raise RuntimeError("Something went wrong, there is no GOES data to format!!")
 
     # Reshape that data into a table with the channels as columns
     newdat = Table(list(out.values())).filled(BAD_VALUE)
@@ -81,6 +81,14 @@ def get_realtime_goes(use7d=False):
         url = f"{goes_url_base}{source}/{url_end}"
         dat = get_goes_json_data(url=url)
         if dat is None:
-            return
+            raise RuntimeError(f"Problem retrieving GOES {source} data!!")
         dat_all = vstack([dat_all, dat])
-    return format_goes_proton_data(dat_all)
+    dat_all = format_goes_proton_data(dat_all)
+    # Remove values that are less than zero
+    good = np.ones(len(dat_all), dtype=bool)
+    for col in dat_all.columns:
+        if col.startswith("P"):
+            good &= dat_all[col] >= 0.0
+    if np.sum(good) == 0:
+        raise RuntimeError("All realtime GOES data were bad!!")
+    return dat_all[good]
