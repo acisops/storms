@@ -13,7 +13,11 @@ from torch import nn
 
 from storms.utils import base_path
 
+models_path = base_path / "txings_proxy/Models"
+
 goes_path = Path("/data/acis/goes")
+
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 goes_bands = {
     "P1": [1.02, 1.86],
@@ -209,31 +213,35 @@ def prep_data(t_goes):
     return np.array(df)
 
 
-def run_model(X, which_rate):
-    models_path = base_path / "txings_proxy/Models"
+def get_model(which_rate, k):
+    model = MLPModel(input_length).to(device)
+    model.load_state_dict(
+        torch.load(
+            models_path / f"{which_rate}_k{k}_model",
+            map_location=device,
+            weights_only=True,
+        )
+    )
+    return model
+
+
+def run_model(X, which_rate, inv_transform=True):
 
     scaler_x = joblib.load(models_path / f"scaler_{which_rate}_x.pkl")
     scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
     xx = torch.from_numpy(scaler_x.transform(X)).to(device, torch.float32)
     y_inv = []
     for k in range(n_folds):
-        model = MLPModel(input_length).to(device)
-        model.load_state_dict(
-            torch.load(
-                models_path / f"{which_rate}_k{k}_model",
-                map_location="cpu",
-                weights_only=True,
-            )
-        )
+        model = get_model(which_rate, k)
         with torch.no_grad():
             model.eval()
             yy = model(xx).squeeze().cpu().detach().numpy()
-        y_inv.append(scaler_y.inverse_transform(yy))
+        if inv_transform:
+            yy = scaler_y.inverse_transform(yy)
+        y_inv.append(yy)
 
-    return np.mean(y_inv, axis=0)
+    return y_inv
 
 
 def get_historical_goes(tstart, tstop):
