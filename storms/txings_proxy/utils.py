@@ -185,8 +185,8 @@ class MLPModel(nn.Module):
 
 
 def prep_data(t_goes):
-    ephem_start = t_goes["time"][0] - 2.0 * u.day
-    ephem_stop = t_goes["time"][0] + 2.0 * u.day
+    ephem_start = CxoTime(t_goes["time"][0]) - 2.0 * u.day
+    ephem_stop = CxoTime(t_goes["time"][-1]) + 2.0 * u.day
 
     ephem_data = fetch.MSIDset(ephem_msids, ephem_start, ephem_stop, stat="5min")
 
