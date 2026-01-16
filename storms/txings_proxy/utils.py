@@ -16,6 +16,7 @@ from storms.utils import base_path
 models_path = base_path / "txings_proxy/Models"
 
 goes_path = Path("/data/acis/goes")
+txings_path = Path("/data/acis/txings")
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 

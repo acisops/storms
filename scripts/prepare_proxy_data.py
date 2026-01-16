@@ -6,7 +6,7 @@ from mica.archive.cda import get_ocat_local
 from scipy.ndimage import uniform_filter1d
 
 from storms import SolarWind
-from storms.txings_proxy.utils import goes_path
+from storms.txings_proxy.utils import goes_path, txings_path
 
 t = Table.read(goes_path / "goes_16_18.fits")
 
@@ -100,5 +100,5 @@ for col in chandra_ephems:
             bi_rate_table["time"][mask], msids[col].times, msids[col].vals
         )
 
-fi_rate_table.write("fi_rate_table.fits", format="fits", overwrite=True)
-bi_rate_table.write("bi_rate_table.fits", format="fits", overwrite=True)
+fi_rate_table.write(txings_path / "fi_rate_table.fits", format="fits", overwrite=True)
+bi_rate_table.write(txings_path / "bi_rate_table.fits", format="fits", overwrite=True)

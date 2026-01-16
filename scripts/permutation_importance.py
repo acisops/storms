@@ -1,11 +1,10 @@
 import numpy as np
 import torch
 from astropy.table import Table
-from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols
+from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols, txings_path
 import joblib
 from cxotime import CxoTime
 import astropy.units as u
-from IPython import embed
 import matplotlib.pyplot as plt
 
 
@@ -21,7 +20,7 @@ scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
 tstart = t0 - 2.0*u.day
 tstop = t0 + 2.0*u.day
 
-t = Table.read(f"{which_rate}_table.fits", format="fits")
+t = Table.read(txings_path / f"{which_rate}_table.fits", format="fits")
 
 X = torch.from_numpy(scaler_x.transform(prep_data(t))).to(device, torch.float32)
 y = torch.from_numpy(scaler_y.transform(t[which_rate].data)).to(device, torch.float32)

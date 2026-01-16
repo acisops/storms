@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from astropy.table import Table
-from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols
+from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols, txings_path
 import joblib
 from cxotime import CxoTime
 import astropy.units as u
@@ -41,7 +41,7 @@ scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
 tstart = t0 - 2.0*u.day
 tstop = t0 + 2.0*u.day
 
-t = Table.read(f"{which_rate}_table.fits", format="fits")
+t = Table.read(txings_path / f"{which_rate}_table.fits", format="fits")
 
 tstart = CxoTime(tstart).secs
 tstop = CxoTime(tstop).secs
