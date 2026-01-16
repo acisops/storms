@@ -9,7 +9,6 @@ import torch
 from astropy.table import Table
 from captum.attr import IntegratedGradients
 from plotly.subplots import make_subplots
-from sklearn.metrics import mean_squared_error
 from torch import nn, optim
 
 from storms.txings_proxy.utils import (
@@ -28,39 +27,6 @@ else:
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 base_path = Path(__file__).parent
-
-
-def permutation_importance(model, X_val, y_val, loss_fn):
-    X_val = torch.from_numpy(X_val).to(device, torch.float32)
-    model.eval()
-    with torch.no_grad():
-        baseline_preds = model(X_val).squeeze().cpu().detach().numpy()
-        baseline_loss = loss_fn(baseline_preds, y_val)
-
-    importances = []
-    for i in range(X_val.shape[1]):
-        X_permuted = X_val.clone()
-        X_permuted[:, i] = X_permuted[:, i][torch.randperm(X_permuted.size(0))]
-
-        with torch.no_grad():
-            permuted_preds = model(X_permuted).squeeze().cpu().detach().numpy()
-            permuted_loss = loss_fn(permuted_preds, y_val)
-
-        importances.append(permuted_loss - baseline_loss)
-
-    return np.array(importances)
-
-
-def make_predict_fn(model):
-    model.eval()
-
-    def _predict_fn(x_numpy):
-        x_tensor = torch.from_numpy(x_numpy).to(device, torch.float32)
-        with torch.no_grad():
-            preds = model(x_tensor).squeeze().cpu().detach().numpy()
-        return preds
-
-    return _predict_fn
 
 
 def find_near_detections(y_data, limits, tolerance=-10):
@@ -489,9 +455,6 @@ def k_fold_train_test(
 
         model.load_state_dict(torch.load(base_path / f"Models/{model_name}"))
 
-        importances = permutation_importance(model, X_val, y_val, mean_squared_error)
-        np.savez(f"{which_rate}_k{k}_importances.npz", importances)
-
         model.eval()
         ig = IntegratedGradients(model)
 
@@ -877,21 +840,6 @@ def k_fold_train_test(
                 ),
             )
             print()
-
-    """
-    mean_contrib = {feat: np.mean(vals) for feat, vals in contrib_dict.items()}
-
-    sorted_feats = sorted(mean_contrib.items(), key=lambda x: x[1], reverse=True)
-    labels, values = zip(*sorted_feats, strict=True)
-
-    fig, ax = plt.subplots(figsize=(10, 15))
-    ax.barh(labels, values)
-    ax.set_xlabel("Mean absolute contribution (LIME)")
-    ax.set_title("LIME-Averaged Feature Importance")
-    ax.invert_yaxis()
-    fig.tight_layout()
-    fig.savefig(f"{which_rate}_lime.png", dpi=300)
-    """
 
 
 rng = np.random.default_rng(12345)
