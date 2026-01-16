@@ -548,14 +548,13 @@ class SolarWind:
         dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
-    def _plot_txings(self, plot=None):
+    def _plot_txings(self, plot=None, ms=5):
         self.rates = defaultdict(list)
         first = True
         for o in self.obsids:
             if o.obsid > 39999 and o.obsid < 60000:
                 continue
             this_o = self.txings_data["obsid"] == o.obsid
-            # print(i, o.obsid, this_o.sum())
             if this_o.sum() == 0:
                 continue
             t = self.txings_data[this_o]
@@ -576,6 +575,7 @@ class SolarWind:
             self.rates["times"],
             self.rates["fi_rate"] * 0.01,
             fmt=".",
+            ms=ms,
             label="FI Rate",
             color="C0",
             lw=0,
@@ -585,6 +585,7 @@ class SolarWind:
             self.rates["times"],
             self.rates["bi_rate"] * 0.01,
             fmt=".",
+            ms=ms,
             label="BI Rate",
             color="C1",
             lw=0,
@@ -621,8 +622,8 @@ class SolarWind:
         self._plot_comms(plot.ax)
         return plot
 
-    def plot_txings(self):
-        return self._plot_txings()
+    def plot_txings(self, ms=5):
+        return self._plot_txings(ms=ms)
 
     def plot_all(self):
         fig, (ax1, ax2, ax3) = plt.subplots(figsize=(10, 15), nrows=3)
