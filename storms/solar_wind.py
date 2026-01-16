@@ -226,7 +226,10 @@ class SolarWind:
         if not fn.exists():
             # sometimes we end up in a spot where they add data from a new
             # year to the end of the last file, so try it here
-            fn = Path(str(fn).replace(str(year), str(year - 1)))
+            if use_browse:
+                fn = ace_data_dir / f"ACE_BROWSE_{year}-001_to_current.h5"
+            else:
+                fn = Path(str(fn).replace(str(year), str(year - 1)))
         return fn
 
     def _get_ace(self, use_browse=False):
