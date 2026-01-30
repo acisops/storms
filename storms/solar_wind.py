@@ -13,6 +13,7 @@ from astropy.io import ascii
 from astropy.table import Table, vstack
 from astropy.time import TimeDelta
 from cxotime import CxoTime
+from kadi.commands import filter_scs107_events, set_time_now
 from kadi.commands import states as cmd_states
 from kadi.events import obsids, rad_zones
 from matplotlib import font_manager
@@ -380,6 +381,22 @@ class SolarWind:
 
     def plot_ace_p(self):
         return self._plot_ace_p()
+
+    def get_ace_p3_fluence(self, start, stop):
+        start = CxoTime(start)
+        stop = CxoTime(stop)
+        with set_time_now(stop + 1.0 * u.hr):
+            planned_states = cmd_states.get_states(
+                start, stop, event_filter=filter_scs107_events
+            )
+        idxs = (self.ace_times >= start) & (self.ace_times < stop)
+        t = self.ace_times[idxs]
+        states = cmd_states.interpolate_states(planned_states, t)
+        ace_p3 = np.nan_to_num(self.ace_table["p3"][idxs])
+        ace_p3[states["simpos"] < 0.0] = 0.0
+        ace_p3[(states["hetg"] == "INSR") | (states["letg"] == "INSR")] *= 0.2
+        fluence = np.trapz(ace_p3, x=t.secs) * 1.0e-9
+        return fluence
 
     def _plot_ace_p3(self, plot=None):
         dp = CustomDatePlot(
