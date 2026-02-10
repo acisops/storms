@@ -1,15 +1,22 @@
+import astropy.units as u
+import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
 from astropy.table import Table
-from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols, txings_path
-import joblib
-from cxotime import CxoTime
-import astropy.units as u
-import matplotlib.pyplot as plt
 from captum.attr import IntegratedGradients
-from torch.utils.data import TensorDataset, DataLoader
+from cxotime import CxoTime
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 
+from storms.txings_proxy.utils import (
+    get_model,
+    models_path,
+    n_folds,
+    prep_data,
+    txings_path,
+    use_cols,
+)
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -23,7 +30,9 @@ class PartialInputWrapper(nn.Module):
 
     def forward(self, x_subset):
         # 1. Create a full-sized tensor of zeros on the same device as the input
-        full_input = torch.zeros((x_subset.shape[0], self.total_features), device=x_subset.device)
+        full_input = torch.zeros(
+            (x_subset.shape[0], self.total_features), device=x_subset.device
+        )
 
         # 2. Map the subset back to the original feature positions
         full_input[:, self.keep_indices] = x_subset
@@ -38,8 +47,8 @@ which_rate = "fi_rate"
 scaler_x = joblib.load(models_path / f"scaler_{which_rate}_x.pkl")
 scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
 
-tstart = t0 - 2.0*u.day
-tstop = t0 + 2.0*u.day
+tstart = t0 - 2.0 * u.day
+tstop = t0 + 2.0 * u.day
 
 t = Table.read(txings_path / f"{which_rate}_table.fits", format="fits")
 
@@ -103,4 +112,4 @@ ax.invert_yaxis()  # Most important on top
 fig.tight_layout()
 fig.savefig(f"{which_rate}_ig.png", dpi=300)
 
-#embed()
+# embed()

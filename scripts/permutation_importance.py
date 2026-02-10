@@ -1,12 +1,19 @@
+import astropy.units as u
+import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from astropy.table import Table
-from storms.txings_proxy.utils import prep_data, get_model, n_folds, models_path, use_cols, txings_path
-import joblib
 from cxotime import CxoTime
-import astropy.units as u
-import matplotlib.pyplot as plt
 
+from storms.txings_proxy.utils import (
+    get_model,
+    models_path,
+    n_folds,
+    prep_data,
+    txings_path,
+    use_cols,
+)
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -17,8 +24,8 @@ which_rate = "fi_rate"
 scaler_x = joblib.load(models_path / f"scaler_{which_rate}_x.pkl")
 scaler_y = joblib.load(models_path / f"scaler_{which_rate}_y.pkl")
 
-tstart = t0 - 2.0*u.day
-tstop = t0 + 2.0*u.day
+tstart = t0 - 2.0 * u.day
+tstop = t0 + 2.0 * u.day
 
 t = Table.read(txings_path / f"{which_rate}_table.fits", format="fits")
 
@@ -65,4 +72,3 @@ ax.set_title("Permutation Feature Importance")
 ax.invert_yaxis()  # Most important on top
 fig.tight_layout()
 fig.savefig(f"{which_rate}_pm.png", dpi=300)
-
