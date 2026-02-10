@@ -5,22 +5,17 @@ import astropy.units as u
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.table import Table
 from astropy.time import Time
 from cxotime import CxoTime
 from kadi.commands.states import get_states
 from kadi.events import rad_zones
 
 from storms import SolarWind
+from storms.txings_proxy.realtime import get_realtime_goes
+from storms.txings_proxy.utils import prep_data, run_model
 
 parser = argparse.ArgumentParser(description="Plot the txings GOES proxy.")
 
-parser.add_argument(
-    "--infile",
-    type=str,
-    default="/data/acis/txings/txings_proxy.fits",
-    help="The file containing the proxy to read.",
-)
 parser.add_argument("--out_path", type=str, help="The location to write the image.")
 parser.add_argument(
     "--days", type=float, default=3.0, help="The number of days to show on the plot."
@@ -37,9 +32,11 @@ plt.rc("xtick.minor", size=3, width=2)
 plt.rc("ytick.minor", size=3, width=2)
 
 
-p = Path(args.infile)
+t_proxy = get_realtime_goes(use7d=True)
+X = prep_data(t_proxy)
 
-t_proxy = Table.read(p)
+for which_rate in ["fi_rate", "bi_rate"]:
+    t_proxy[f"{which_rate}_predict"] = np.mean(run_model(X, which_rate), axis=0)
 
 times = Time(t_proxy["time"], format="cxcsec")
 
