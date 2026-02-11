@@ -337,6 +337,25 @@ class SolarWind:
             self, e_goes_r[:4], ["gp1", "gp2a", "gp2b", "gp3"]
         )
 
+    def get_ace_p3_fluence(self, start, stop, planned=True):
+        start = CxoTime(start)
+        stop = CxoTime(stop)
+        if planned:
+            with set_time_now(stop + 1.0 * u.hr):
+                event_states = cmd_states.get_states(
+                    start, stop, event_filter=filter_scs107_events
+                )
+        else:
+            event_states = cmd_states.get_states(start, stop)
+        idxs = (self.ace_times >= start) & (self.ace_times < stop)
+        t = self.ace_times[idxs]
+        states = cmd_states.interpolate_states(event_states, t)
+        ace_p3 = np.nan_to_num(self.ace_table["p3"][idxs])
+        ace_p3[states["simpos"] < 0.0] = 0.0
+        ace_p3[(states["hetg"] == "INSR") | (states["letg"] == "INSR")] *= 0.2
+        fluence = np.trapz(ace_p3, x=t.secs) * 1.0e-9
+        return fluence
+
     def _plot_comms(self, ax):
         if self.comms:
             for i, comm in enumerate(self.comms):
@@ -360,12 +379,13 @@ class SolarWind:
                 alpha=0.333333,
             )
 
-    def plot_ace_e(self):
-        return self._plot_ace_e()
-
-    def _plot_ace_e(self, plot=None):
+    def plot_ace_e(self, plot=None, figsize=None):
         dp = CustomDatePlot(
-            self.ace_times, self.ace_table["de1"], label="DE1", plot=plot
+            self.ace_times,
+            self.ace_table["de1"],
+            label="DE1",
+            plot=plot,
+            figsize=figsize,
         )
         CustomDatePlot(self.ace_times, self.ace_table["de4"], plot=dp, label="DE4")
         de_all = np.concatenate([self.ace_table[f"de{i}"] for i in [1, 4]])
@@ -379,26 +399,7 @@ class SolarWind:
         dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
-    def plot_ace_p(self):
-        return self._plot_ace_p()
-
-    def get_ace_p3_fluence(self, start, stop):
-        start = CxoTime(start)
-        stop = CxoTime(stop)
-        with set_time_now(stop + 1.0 * u.hr):
-            planned_states = cmd_states.get_states(
-                start, stop, event_filter=filter_scs107_events
-            )
-        idxs = (self.ace_times >= start) & (self.ace_times < stop)
-        t = self.ace_times[idxs]
-        states = cmd_states.interpolate_states(planned_states, t)
-        ace_p3 = np.nan_to_num(self.ace_table["p3"][idxs])
-        ace_p3[states["simpos"] < 0.0] = 0.0
-        ace_p3[(states["hetg"] == "INSR") | (states["letg"] == "INSR")] *= 0.2
-        fluence = np.trapz(ace_p3, x=t.secs) * 1.0e-9
-        return fluence
-
-    def _plot_ace_p3(self, plot=None):
+    def plot_ace_p3(self, plot=None):
         dp = CustomDatePlot(
             self.ace_times, self.ace_table["p3"], plot=plot, color="C1", label="P3"
         )
@@ -414,10 +415,7 @@ class SolarWind:
         dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
-    def plot_ace_p3(self):
-        return self._plot_ace_p3()
-
-    def _plot_ace_p(self, plot=None):
+    def plot_ace_p(self, plot=None):
         dp = CustomDatePlot(self.ace_times, self.ace_table["p1"], label="P1", plot=plot)
         CustomDatePlot(self.ace_times, self.ace_table["p3"], plot=dp, label="P3")
         CustomDatePlot(self.ace_times, self.ace_table["p5"], plot=dp, label="P5")
@@ -433,7 +431,7 @@ class SolarWind:
         dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
-    def _plot_goes_r(self, plot=None):
+    def plot_goes_r(self, plot=None):
         dp = CustomDatePlot(
             self.goes_r_times, self.goes_r_table["P1"], label="P1", plot=plot
         )
@@ -460,7 +458,7 @@ class SolarWind:
             dp.set_legend(loc="upper left", fontsize=14)
             return dp
 
-    def _plot_index(self, plot=None):
+    def plot_index(self, plot=None):
         if "ace_soft_slope" not in self.ace_table.colnames:
             self.generate_slopes()
         dp = CustomDatePlot(
@@ -483,11 +481,6 @@ class SolarWind:
         self._plot_comms(dp.ax)
         dp.set_legend()
         return dp
-
-    def plot_index(self):
-        fig, ax = plt.subplots(figsize=(11, 6.5))
-        plot1 = DummyDatePlot(fig, ax, [], None, [])
-        return self._plot_index(plot=plot1)
 
     def plot_proton_spectra(self, times):
         spectrum_colors = [
@@ -540,10 +533,7 @@ class SolarWind:
         ax3.tick_params(which="major", width=2, length=6, labelsize=18)
         return fig
 
-    def plot_hrc(self):
-        return self._plot_hrc()
-
-    def _plot_hrc(self, plot=None):
+    def plot_hrc(self, plot=None):
         dp = CustomDatePlot(
             self.hrc_times, self.hrc_table["hrc_shield"], label="GOES proxy", plot=plot
         )
@@ -565,7 +555,7 @@ class SolarWind:
         dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
-    def _plot_txings(self, plot=None, ms=5):
+    def plot_txings(self, plot=None, ms=5):
         self.rates = defaultdict(list)
         first = True
         for o in self.obsids:
@@ -638,112 +628,6 @@ class SolarWind:
         self._plot_rzs(plot.ax)
         self._plot_comms(plot.ax)
         return plot
-
-    def plot_txings(self, ms=5):
-        return self._plot_txings(ms=ms)
-
-    def plot_all(self):
-        fig, (ax1, ax2, ax3) = plt.subplots(figsize=(10, 15), nrows=3)
-        plot1 = DummyDatePlot(fig, ax1, [], None, [])
-        dp1 = self._plot_p3(plot=plot1)
-        dp1.set_ylabel(
-            "ACE P3 Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=16,
-        )
-        dp1.ax.tick_params(
-            axis="x",
-            direction="inout",
-            which="major",
-            bottom=True,
-            top=True,
-            length=8,
-            labeltop=True,
-            labelbottom=False,
-            labelsize=18,
-        )
-        dp1.ax.tick_params(
-            axis="x", direction="inout", which="minor", bottom=True, top=True, length=4
-        )
-        self._plot_txings(fig, ax2)
-        ax2.tick_params(
-            axis="x", direction="inout", which="major", length=8, top=True, bottom=True
-        )
-        ax2.tick_params(
-            axis="x", direction="inout", which="minor", length=4, top=True, bottom=True
-        )
-        xlim = dp1.ax.get_xlim()
-        ax2.set_xlim(*xlim)
-        plot3 = DummyDatePlot(fig, ax3, [], None, [])
-        dp3 = self._plot_hrc(plot=plot3)
-        dp3.set_ylabel("HRC Shield Rate & Proxy\n(Counts)", fontsize=16)
-        dp3.ax.tick_params(
-            axis="x", direction="inout", which="major", length=8, top=True, bottom=True
-        )
-        dp3.ax.tick_params(
-            axis="x", direction="inout", which="minor", length=4, top=True, bottom=True
-        )
-        ax3.set_xlim(*xlim)
-        fig.tight_layout()
-        return fig, xlim
-
-    def plot_ace(self, xlim=None):
-        fig, (ax1, ax2, ax3) = plt.subplots(figsize=(10, 15), nrows=3)
-        plot1 = DummyDatePlot(fig, ax1, [], None, [])
-        dp1 = self._plot_protons(plot=plot1)
-        dp1.set_ylabel(
-            "ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=16,
-        )
-        dp1.ax.tick_params(
-            axis="x",
-            direction="inout",
-            which="major",
-            bottom=True,
-            top=True,
-            length=8,
-            labeltop=True,
-            labelbottom=False,
-            labelsize=18,
-        )
-        dp1.ax.tick_params(
-            axis="x", direction="inout", which="minor", bottom=True, top=True, length=4
-        )
-        plot2 = DummyDatePlot(fig, ax2, [], None, [])
-        dp2 = self._plot_electrons(plot=plot2)
-        dp2.set_ylabel(
-            "ACE Electron Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=16,
-        )
-        dp2.ax.tick_params(
-            axis="x", direction="inout", which="major", length=8, top=True, bottom=True
-        )
-        dp2.ax.tick_params(
-            axis="x", direction="inout", which="minor", length=4, top=True, bottom=True
-        )
-        dp2.ax.set_xlabel("")
-        dp2.ax.set_xticklabels([])
-        plot3 = DummyDatePlot(fig, ax3, [], None, [])
-        dp3 = self._plot_goes_r(plot=plot3)
-        dp3.set_ylabel(
-            "GOES Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=16,
-        )
-        dp3.ax.tick_params(
-            axis="x", direction="inout", which="major", length=8, top=True, bottom=True
-        )
-        dp3.ax.tick_params(
-            axis="x", direction="inout", which="minor", length=4, top=True, bottom=True
-        )
-        dp3.set_ylim(1.0e-6, None)
-        if xlim is not None:
-            ax1.set_xlim(*xlim)
-            ax2.set_xlim(*xlim)
-            ax3.set_xlim(*xlim)
-        fig.tight_layout()
-        return fig
-
-    def plot_goes_r(self):
-        return self._plot_goes_r()
 
     def scatter_plots(self):
         fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
