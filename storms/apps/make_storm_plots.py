@@ -124,7 +124,7 @@ def main():
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=3, zorder=200)
     dp.savefig(f"ace_p3_{basename}.png")
 
-    print("Plotting ACE Proton Flux.")
+    print("Plotting ACE Proton Fluxes.")
     dp = sw.plot_ace_p()
     if "ace_p_limits" in params:
         dp.set_ylim(*params["ace_p_limits"])
@@ -132,6 +132,33 @@ def main():
     plot_lines(dp)
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
     dp.savefig(f"ace_p_{basename}.png")
+
+    print("Plotting ACE Electron Fluxes.")
+    dp = sw.plot_ace_e()
+    dp.set_xlim(xmin, xmax)
+    if "ace_e_limits" in params:
+        dp.set_ylim(*params["ace_e_limits"])
+    plot_lines(dp)
+    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
+    dp.savefig(f"ace_e_{basename}.png")
+
+    print("Plotting Goes Proton Flux.")
+    dp = sw.plot_goes_r()
+    dp.set_xlim(xmin, xmax)
+    plot_lines(dp)
+    if "goes_limits" in params:
+        dp.set_ylim(*params["goes_limits"])
+    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
+    dp.savefig(f"goes_p_{basename}.png")
+
+    print("Plotting HRC Proxy.")
+    dp = sw.plot_hrc()
+    dp.set_xlim(xmin, xmax)
+    if "hrc_limits" in params:
+        dp.set_ylim(*params["hrc_limits"])
+    plot_lines(dp)
+    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
+    dp.savefig(f"hrc_proxy_{basename}.png")
 
     print("Plotting txings rates.")
     dp = sw.plot_txings()
@@ -151,33 +178,6 @@ def main():
     dp.add_vline(scs_107, color="r")
     dp.add_text(scs_107 + 0.1 * u.hr, 0.5, "SCS 107", color="r", rotation=90)
     dp.savefig(f"txings_zoomin_{basename}.png")
-
-    print("Plotting HRC Proxy.")
-    dp = sw.plot_hrc()
-    dp.set_xlim(xmin, xmax)
-    if "hrc_limits" in params:
-        dp.set_ylim(*params["hrc_limits"])
-    plot_lines(dp)
-    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"hrc_proxy_{basename}.png")
-
-    print("Plotting Goes Proton Flux.")
-    dp = sw.plot_goes_r()
-    dp.set_xlim(xmin, xmax)
-    plot_lines(dp)
-    if "goes_limits" in params:
-        dp.set_ylim(*params["goes_limits"])
-    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"goes_p_{basename}.png")
-
-    print("Plotting ACE Electron Flux.")
-    dp = sw.plot_ace_e()
-    dp.set_xlim(xmin, xmax)
-    if "ace_e_limits" in params:
-        dp.set_ylim(*params["ace_e_limits"])
-    plot_lines(dp)
-    dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"ace_e_{basename}.png")
 
 
 if __name__ == "__main__":
