@@ -10,7 +10,7 @@ entry_points = {
 
 setup(
     name="storms",
-    packages=["storms", "storms.txings_proxy"],
+    packages=["storms", "storms.txings_proxy", "storms.apps"],
     use_scm_version=True,
     setup_requires=["setuptools_scm", "setuptools_scm_git_archive"],
     description="Solar storm analysis for ACIS Ops",
