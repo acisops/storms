@@ -3,6 +3,8 @@
 Storms Command Line Tools
 =========================
 
+.. _calc_p3_fluence:
+
 ``calc_p3_fluence``
 -------------------
 
@@ -60,6 +62,8 @@ Returns:
     Potential fluence: 4.26 × 10⁹
     Actual fluence: 0.03 × 10⁹
     Fluence avoided: 4.23 × 10⁹
+
+.. _make_storm_plots:
 
 ``make_storm_plots``
 --------------------

@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "ACIS Storms Documentation"
+project = "ACIS Storms"
 copyright = "2026, CXC ACIS Operations"
 author = "CXC ACIS Operations"
 
@@ -22,5 +22,6 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "alabaster"
-html_static_path = ["_static"]
+html_theme = "pydata_sphinx_theme"
+
+html_theme_options = {}
