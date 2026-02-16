@@ -1,17 +1,19 @@
 from argparse import ArgumentParser
 from pathlib import Path
-import numpy as np
 
-import astropy.units as u
-from astropy.table import Table, vstack
+import numpy as np
+from astropy.table import Table
 from cxotime import CxoTime
 
-from storms.txings_proxy.realtime import get_realtime_goes
 from storms.txings_proxy.utils import prep_data, run_model
 
 parser = ArgumentParser(
-    description="Make the real-time GOES-based proxy for ACIS txings."
+    description="Make the GOES-based proxy for ACIS txings from historical data."
 )
+
+parser.add_argument("start", type=str, help="The start time.")
+
+parser.add_argument("stop", type=str, help="The stop time.")
 
 parser.add_argument(
     "--out_file",
@@ -20,32 +22,38 @@ parser.add_argument(
     help="The path of the file to be written.",
 )
 
-parser.add_argument("--use_7day", action="store_true", help="Use 7-day file.")
-
 parser.add_argument(
     "--overwrite_table", action="store_true", help="Overwrite the table."
 )
 
 args = parser.parse_args()
 
-
 p = Path(args.out_file)
-start_over = not p.exists() or args.overwrite_table
-use7d = start_over or args.use_7day
-try:
-    t_goes = get_realtime_goes(use7d=use7d)
-except RuntimeError as e1:
-    try:
-        t_goes = get_realtime_goes(use7d=True)
-    except RuntimeError as e2:
-        raise e2 from e1
-ephem_stop = CxoTime()
-ephem_start = ephem_stop - 8.0 * u.day
-if not start_over:
-    t_exist = Table.read(p)
-    t_exist = t_exist[t_exist["time"] < t_goes["time"][0]]
+
+t = Table.read("/data/acis/goes/goes_16_18.fits")
+if args.start is not None:
+    tstart = CxoTime(args.start).secs
 else:
-    t_exist = None
+    tstart = t["time"][0] - 1.0
+if args.start is not None:
+    tstop = CxoTime(args.stop).secs
+else:
+    tstop = t["time"][-1] + 1.0
+idxs = (t["time"] >= tstart) & (t["time"] <= tstop)
+t_goes = Table()
+for col in t.colnames:
+    if col.startswith("P"):
+        t_goes[f"{col}_E"] = t[col][idxs, 0]
+t_goes["time"] = t["time"][idxs]
+
+# Remove values that are less than zero
+good = np.ones(len(t_goes), dtype=bool)
+for col in t_goes.columns:
+    if col.startswith("P"):
+        good &= t_goes[col] >= 0.0
+t_goes = t_goes[good]
+ephem_start = tstart
+ephem_stop = tstop
 
 
 X = prep_data(t_goes)
@@ -53,8 +61,4 @@ X = prep_data(t_goes)
 for which_rate in ["fi_rate", "bi_rate"]:
     t_goes[f"{which_rate}_predict"] = np.mean(run_model(X, which_rate), axis=0)
 
-if t_exist is None:
-    t_final = t_goes
-else:
-    t_final = vstack([t_exist, t_goes])
-t_final.write(p, overwrite=True)
+t_goes.write(p, overwrite=True)
