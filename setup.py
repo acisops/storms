@@ -1,6 +1,13 @@
 #!/usr/bin/env python
 from setuptools import setup
 
+entry_points = {
+    "console_scripts": [
+        "calc_p3_fluence = storms.apps.calc_p3_fluence:main",
+        "make_storm_plots = storms.apps.make_storm_plots:main",
+    ],
+}
+
 setup(
     name="storms",
     packages=["storms", "storms.txings_proxy"],
@@ -16,4 +23,5 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
     ],
+    entry_points=entry_points,
 )
