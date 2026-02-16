@@ -4,3 +4,4 @@ __pycache__
 .vscode
 .idea
 scripts/*.png
+doc/build
