@@ -450,7 +450,7 @@ class SolarWind:
         if np.isnan([ymin, ymax]).any():
             return None
         else:
-            dp.set_ylim(0.4 * ymin, 1.6 * ymax)
+            dp.set_ylim(max(1.0e-7, 0.4 * ymin), 1.6 * ymax)
             self._plot_rzs(dp.ax)
             self._plot_comms(dp.ax)
             return dp
@@ -545,7 +545,7 @@ class SolarWind:
             h_all = np.concatenate([h_all, self.hrc_table["2shldart"]])
         dp.set_yscale("log")
         dp.set_ylabel("HRC Proxy (counts)")
-        dp.set_ylim(0.4 * np.nanmin(h_all), max(1.6 * np.nanmax(h_all), 300))
+        dp.set_ylim(max(7, 0.4 * np.nanmin(h_all)), max(1.6 * np.nanmax(h_all), 300))
         dp.add_hline(235.0, ls="--", lw=2, color="C3")
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
