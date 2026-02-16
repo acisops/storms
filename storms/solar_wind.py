@@ -381,13 +381,12 @@ class SolarWind:
                 alpha=0.333333,
             )
 
-    def plot_ace_e(self, plot=None, figsize=None):
+    def plot_ace_e(self, plot=None):
         dp = CustomDatePlot(
             self.ace_times,
             self.ace_table["de1"],
             label="DE1",
             plot=plot,
-            figsize=figsize,
         )
         CustomDatePlot(self.ace_times, self.ace_table["de4"], plot=dp, label="DE4")
         de_all = np.concatenate([self.ace_table[f"de{i}"] for i in [1, 4]])
@@ -395,10 +394,9 @@ class SolarWind:
         dp.set_ylabel(
             "ACE Electron Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
         )
-        dp.set_ylim(0.5 * np.nanmin(de_all), 1.5 * np.nanmax(de_all))
+        dp.set_ylim(0.4 * np.nanmin(de_all), 1.6 * np.nanmax(de_all))
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
-        dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
     def plot_ace_p3(self, plot=None):
@@ -410,11 +408,10 @@ class SolarWind:
             "ACE P3 Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
         )
         dp.set_ylim(
-            0.5 * np.nanmin(self.ace_table["p3"]), 1.5 * np.nanmax(self.ace_table["p3"])
+            0.4 * np.nanmin(self.ace_table["p3"]), 1.6 * np.nanmax(self.ace_table["p3"])
         )
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
-        dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
     def plot_ace_p(self, plot=None):
@@ -427,10 +424,9 @@ class SolarWind:
         dp.set_ylabel(
             "ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
         )
-        dp.set_ylim(0.5 * np.nanmin(p_all), 1.5 * np.nanmax(p_all))
+        dp.set_ylim(0.4 * np.nanmin(p_all), 1.6 * np.nanmax(p_all))
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
-        dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
     def plot_goes_r(self, plot=None):
@@ -454,10 +450,9 @@ class SolarWind:
         if np.isnan([ymin, ymax]).any():
             return None
         else:
-            dp.set_ylim(0.5 * ymin, 1.5 * ymax)
+            dp.set_ylim(0.4 * ymin, 1.6 * ymax)
             self._plot_rzs(dp.ax)
             self._plot_comms(dp.ax)
-            dp.set_legend(loc="upper left", fontsize=14)
             return dp
 
     def plot_index(self, plot=None):
@@ -550,11 +545,10 @@ class SolarWind:
             h_all = np.concatenate([h_all, self.hrc_table["2shldart"]])
         dp.set_yscale("log")
         dp.set_ylabel("HRC Proxy (counts)")
-        dp.set_ylim(0.5 * np.nanmin(h_all), max(1.5 * np.nanmax(h_all), 300))
+        dp.set_ylim(0.4 * np.nanmin(h_all), max(1.6 * np.nanmax(h_all), 300))
         dp.add_hline(235.0, ls="--", lw=2, color="C3")
         self._plot_rzs(dp.ax)
         self._plot_comms(dp.ax)
-        dp.set_legend(loc="upper left", fontsize=14)
         return dp
 
     def plot_txings(self, plot=None, ms=5):
@@ -626,7 +620,7 @@ class SolarWind:
             label.set_fontproperties(fontProperties)
         for axis in ["top", "bottom", "left", "right"]:
             plot.ax.spines[axis].set_linewidth(2)
-        plot.set_legend(fontsize=18)
+        plot.set_legend(fontsize=15)
         self._plot_rzs(plot.ax)
         self._plot_comms(plot.ax)
         return plot
