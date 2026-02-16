@@ -8,8 +8,17 @@ from storms import SolarWind
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("radmon_disable_time", type=str)
-    parser.add_argument("return_to_science_time", type=str)
+    parser.add_argument(
+        "radmon_disable_time",
+        type=str,
+        help="The time of radmon disable (beginning of science orbit) in "
+        "YYYY:DOY:HH:MM:SS format.",
+    )
+    parser.add_argument(
+        "return_to_science_time",
+        type=str,
+        help="The time of first command in the return to science load.",
+    )
 
     args = parser.parse_args()
 
