@@ -9,9 +9,9 @@ from storms import SolarWind
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "radmon_disable_time",
+        "radmon_enable_time",
         type=str,
-        help="The time of radmon disable (beginning of science orbit) in "
+        help="The time of radmon enable (beginning of science orbit) in "
         "YYYY:DOY:HH:MM:SS format.",
     )
     parser.add_argument(
@@ -22,7 +22,7 @@ def main():
 
     args = parser.parse_args()
 
-    start = CxoTime(args.radmon_disable_time)
+    start = CxoTime(args.radmon_enable_time)
     stop = CxoTime(args.return_to_science_time)
 
     s107s = scs107s.filter(start, stop)
