@@ -127,7 +127,7 @@ Example 1
 
     [~]$ make_storm_plots nov2025.yml
 
-where the contents of the YAML file ``nov2025.yaml`` are:
+where the contents of the YAML file ``nov2025.yml`` are:
 
 .. code-block:: yaml
 
@@ -219,7 +219,7 @@ Example 2
 
     [~]$ make_storm_plots jan2026.yml
 
-where the contents of the YAML file ``jan2026.yaml`` are:
+where the contents of the YAML file ``jan2026.yml`` are:
 
 .. code-block:: yaml
 
