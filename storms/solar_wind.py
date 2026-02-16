@@ -183,6 +183,7 @@ class SolarWind:
         get_states=False,
         get_comms=True,
         get_ace=True,
+        get_shield=False,
     ):
         self.start = CxoTime(start)
         self.stop = CxoTime(stop)
@@ -193,7 +194,7 @@ class SolarWind:
         else:
             self.ace_times = None
         if get_hrc:
-            self._get_hrc()
+            self._get_hrc(get_shield=get_shield)
         else:
             self.hrc_times = None
         if get_txings:
@@ -268,7 +269,7 @@ class SolarWind:
         for name in self.ace_table.colnames:
             self.ace_table[name][self.ace_table[name] < 1.0e-3] = np.nan
 
-    def _get_hrc(self):
+    def _get_hrc(self, get_shield=False):
         self.hrc_table = {}
         hrc_data = Path(arc_data) / "hrc_shield.h5"
         with h5py.File(hrc_data, "r") as f:
@@ -279,21 +280,22 @@ class SolarWind:
         self.hrc_table["hrc_shield"] = d["hrc_shield"][idxs]
         bad = self.hrc_table["hrc_shield"] < 0.1
         self.hrc_table["hrc_shield"][bad] = np.nan
-        msids = fetch.MSIDset(["2shldart", "2shldbrt"], self.start, self.stop)
-        if msids["2shldart"].times.size != 0:
-            shield1 = np.interp(
-                self.hrc_times.secs,
-                msids["2shldart"].times,
-                msids["2shldart"].vals / 256,
-            )
-            self.hrc_table["2shldart"] = shield1
-        if msids["2shldbrt"].times.size != 0:
-            shield2 = np.interp(
-                self.hrc_times.secs,
-                msids["2shldbrt"].times,
-                msids["2shldbrt"].vals / 256,
-            )
-            self.hrc_table["2shldbrt"] = shield2
+        if get_shield:
+            msids = fetch.MSIDset(["2shldart", "2shldbrt"], self.start, self.stop)
+            if msids["2shldart"].times.size != 0:
+                shield1 = np.interp(
+                    self.hrc_times.secs,
+                    msids["2shldart"].times,
+                    msids["2shldart"].vals / 256,
+                )
+                self.hrc_table["2shldart"] = shield1
+            if msids["2shldbrt"].times.size != 0:
+                shield2 = np.interp(
+                    self.hrc_times.secs,
+                    msids["2shldbrt"].times,
+                    msids["2shldbrt"].vals / 256,
+                )
+                self.hrc_table["2shldbrt"] = shield2
 
     def _get_goes_r(self):
         t = Table.read("/data/acis/goes/goes_16_18.fits", format="fits")
