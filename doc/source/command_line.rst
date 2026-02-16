@@ -3,6 +3,33 @@
 Storms Command Line Tools
 =========================
 
+Activating
+----------
+
+The ``storms`` command-line tools are installed into the ACIS Ops Ska Python stack.
+If you are logged on as ``acisdude``, all you need to do is issue the
+command ``acisska`` and this Python stack and the tools will be loaded into
+your environment.
+
+However, if you would like activate this stack and these tools from your own user
+account, add the following alias to your ``.bashrc`` if you are using the Bash
+shell (or a variant):
+
+.. code-block:: bash
+
+   alias acisska='eval "$(/data/acis/mambaforge/bin/conda shell.zsh hook)"; \
+                  export SKA=/proj/sot/ska; \
+                  conda activate ska'
+
+Or, if you are a mascohist or are otherwise compelled to use the C shell or a
+variant of it, add this alias to your ``.cshrc.user``:
+
+.. code-block:: bash
+
+   alias acisska 'source /data/acis/mambaforge/etc/profile.d/conda.csh; \
+                  setenv SKA /proj/sot/ska; \
+                  conda activate ska'
+
 .. _calc_p3_fluence:
 
 ``calc_p3_fluence``
