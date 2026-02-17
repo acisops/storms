@@ -24,4 +24,5 @@ setup(
         "Programming Language :: Python :: 3",
     ],
     entry_points=entry_points,
+    include_package_data=True,
 )
