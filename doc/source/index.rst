@@ -13,4 +13,5 @@ Documentation Contents
 .. toctree::
    :maxdepth: 2
 
+   storm_memos/index
    command_line

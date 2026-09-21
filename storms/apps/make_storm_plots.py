@@ -5,6 +5,7 @@ from cxotime import CxoTime
 from ruamel.yaml import YAML
 
 from storms import SolarWind
+from storms.plotting import write_html_fragment, write_image, write_plotlyjs
 
 
 def main():
@@ -20,8 +21,6 @@ def main():
     with open(args.infile) as f:
         params = yaml.load(f)
 
-    basename = params["basename"]
-
     scs_107 = CxoTime(params["scs_107"])
     rts = CxoTime(params["rts"])
     ecs_start = CxoTime(params["ecs_start"]) if "ecs_start" in params else None
@@ -31,8 +30,6 @@ def main():
     xmax = CxoTime(params["stop"])
     start = xmin - 1.0 * u.day
     stop = xmax + 1.0 * u.day
-    xmin2 = scs_107 - 5.0 * u.hr
-    xmax2 = scs_107 + 1.0 * u.hr
 
     legend_loc = params.get("legend_loc", "lower left")
 
@@ -47,12 +44,7 @@ def main():
     )
 
     def plot_lines(dp):
-        props = {
-            "boxstyle": "round",
-            "facecolor": "white",
-            "alpha": 0.75,
-            "linewidth": 0,
-        }
+        text_props = {"bgcolor": "white", "opacity": 0.75}
         dp.add_vline(rts, color="g", zorder=100)
         dp.add_text(
             rts + 1.0 * u.hr,
@@ -60,8 +52,8 @@ def main():
             "RTS",
             color="g",
             rotation=90,
-            bbox=props,
-            transform=dp.ax.get_xaxis_transform(),
+            yref="fraction",
+            **text_props,
         )
         dp.add_vline(scs_107, color="r", zorder=100)
         dp.add_text(
@@ -70,8 +62,8 @@ def main():
             "SCS 107",
             color="r",
             rotation=90,
-            bbox=props,
-            transform=dp.ax.get_xaxis_transform(),
+            yref="fraction",
+            **text_props,
         )
         if ecs_start is not None:
             dp.add_vline(ecs_start, zorder=100)
@@ -81,8 +73,8 @@ def main():
                 "Long ECS Start",
                 color="g",
                 rotation=90,
-                bbox=props,
-                transform=dp.ax.get_xaxis_transform(),
+                yref="fraction",
+                **text_props,
             )
         if ecs_stop is not None:
             dp.add_vline(ecs_stop, zorder=100)
@@ -92,17 +84,17 @@ def main():
                 "Long ECS Stop",
                 color="g",
                 rotation=90,
-                bbox=props,
-                transform=dp.ax.get_xaxis_transform(),
+                yref="fraction",
+                **text_props,
             )
 
     def plot_obsids_txings(sw, dp, xmin, xmax, label_offset):
-        tmin, tmax = dp.ax.get_xlim()
+        tmin, tmax = dp.get_xlim()
         for o in sw.obsids:
             tstart = max(CxoTime(xmin).secs, o.tstart)
             tstop = min(CxoTime(xmax).secs, o.tstop)
             ostart = CxoTime((label_offset * tstart + (1.0 - label_offset) * tstop))
-            if o.obsid > 39999 or (ostart.plot_date < tmin or ostart.plot_date > tmax):
+            if o.obsid > 39999 or (ostart.datetime < tmin or ostart.datetime > tmax):
                 continue
             dp.add_text(
                 ostart,
@@ -122,7 +114,8 @@ def main():
     dp.set_xlim(xmin, xmax)
     plot_lines(dp)
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=3, zorder=200)
-    dp.savefig(f"ace_p3_{basename}.png")
+    write_html_fragment(dp, "ace_p3.html")
+    write_image(dp, "ace_p3.png")
 
     print("Plotting ACE Proton Fluxes.")
     dp = sw.plot_ace_p()
@@ -131,7 +124,8 @@ def main():
     dp.set_xlim(xmin, xmax)
     plot_lines(dp)
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"ace_p_{basename}.png")
+    write_html_fragment(dp, "ace_p.html")
+    write_image(dp, "ace_p.png")
 
     print("Plotting ACE Electron Fluxes.")
     dp = sw.plot_ace_e()
@@ -140,7 +134,8 @@ def main():
         dp.set_ylim(*params["ace_e_limits"])
     plot_lines(dp)
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"ace_e_{basename}.png")
+    write_html_fragment(dp, "ace_e.html")
+    write_image(dp, "ace_e.png")
 
     print("Plotting Goes Proton Flux.")
     dp = sw.plot_goes_r()
@@ -149,7 +144,8 @@ def main():
     if "goes_limits" in params:
         dp.set_ylim(*params["goes_limits"])
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"goes_p_{basename}.png")
+    write_html_fragment(dp, "goes_p.html")
+    write_image(dp, "goes_p.png")
 
     print("Plotting HRC Proxy.")
     dp = sw.plot_hrc()
@@ -158,7 +154,8 @@ def main():
         dp.set_ylim(*params["hrc_limits"])
     plot_lines(dp)
     dp.set_legend(loc=legend_loc, fontsize=15, ncols=2, zorder=200)
-    dp.savefig(f"hrc_proxy_{basename}.png")
+    write_html_fragment(dp, "hrc_proxy.html")
+    write_image(dp, "hrc_proxy.png")
 
     print("Plotting txings rates.")
     dp = sw.plot_txings()
@@ -167,17 +164,10 @@ def main():
     plot_lines(dp)
     dp.set_xlim(xmin, xmax)
     plot_obsids_txings(sw, dp, xmin, xmax, 0.5)
-    dp.savefig(f"txings_{basename}.png")
+    write_html_fragment(dp, "txings.html")
+    write_image(dp, "txings.png")
 
-    print("Plotting zoom-in of txings rates.")
-    dp = sw.plot_txings(ms=10)
-    if "txings_limits" in params:
-        dp.set_ylim(*params["txings_limits"])
-    dp.set_xlim(xmin2, xmax2)
-    plot_obsids_txings(sw, dp, xmin2, xmax2, 0.5)
-    dp.add_vline(scs_107, color="r")
-    dp.add_text(scs_107 + 0.1 * u.hr, 0.5, "SCS 107", color="r", rotation=90)
-    dp.savefig(f"txings_zoomin_{basename}.png")
+    write_plotlyjs("plotly.min.js")
 
 
 if __name__ == "__main__":

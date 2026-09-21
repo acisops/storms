@@ -17,7 +17,7 @@ setup(
     author="John ZuHone",
     author_email="john.zuhone@cfa.harvard.edu",
     url="http://github.com/acisops/storms",
-    install_requires=["numpy>=1.12.1", "requests", "astropy"],
+    install_requires=["numpy>=1.12.1", "requests", "astropy", "plotly", "kaleido"],
     classifiers=[
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",

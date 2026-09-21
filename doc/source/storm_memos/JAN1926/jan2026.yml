@@ -1,0 +1,39 @@
+### Parameter file for storm plots
+
+## Basename for output files
+basename: "jan2026"
+
+
+## Time range for data extraction
+
+# sometime before SCS-107, and maybe before RADMON enable
+start: "2026:018:00:00:00"
+
+# sometime after return to science
+stop: "2026:022:12:00:00"
+
+
+## Relevant times for drawing lines
+
+# Time of SCS-107
+scs_107: "2026:019:09:52:11.046"
+
+# Time of return to science (time of first command)
+rts: "2026:021:14:12:00.000"
+
+# These will only be present if an ECS measurement is run
+#ecs_start: "2025:318:00:59:50.923" 
+#ecs_stop: "2025:318:21:52:00.000"
+
+
+## Options to change y-axis limits for plots, otherwise sane auto-defaults are chosen
+#txings_limits: [0.1, 100]
+#ace_p3_limits: [2e2, 8.0e5]
+#ace_p_limits: [10, 5.0e6]
+#goes_limits: [6e-7, 250]
+#ace_e_limits: [120, 3.0e6]
+#hrc_limits: [9, 7.0e3]
+
+
+## Legend position
+legend_loc: "upper right"

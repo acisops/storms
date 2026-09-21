@@ -6,9 +6,8 @@ from pathlib import Path
 import astropy.units as u
 import cheta.fetch_sci as fetch
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
-from acispy.plots import CustomDatePlot, DummyDatePlot
+import plotly.graph_objects as go
 from astropy.io import ascii
 from astropy.table import Table, vstack
 from astropy.time import TimeDelta
@@ -16,9 +15,11 @@ from cxotime import CxoTime
 from kadi.commands import filter_scs107_events, set_time_now
 from kadi.commands import states as cmd_states
 from kadi.events import obsids, rad_zones
-from matplotlib import font_manager
 from more_itertools import always_iterable
+from plotly.subplots import make_subplots
 from ska_path import ska_path
+
+from storms.plotting import DatePlot, _mpl_color, mathtext_to_html, to_native_endian
 
 
 def convert_txings_date(dates):
@@ -339,10 +340,18 @@ class SolarWind:
             self, e_goes_r[:4], ["gp1", "gp2a", "gp2b", "gp3"]
         )
 
-    def get_ace_p3_fluence(self, start, stop, planned=True):
+    def get_ace_p3_fluence(
+        self, start, stop, planned=True, no_atten=False, use_msids=False
+    ):
         start = CxoTime(start)
         stop = CxoTime(stop)
-        if planned:
+        if use_msids:
+            msids = fetch.MSIDset(
+                ["3tscpos", "4ootgmtn", "4ootgsel"],
+                start.secs - 700.0,
+                stop.secs + 700.0,
+            )
+        elif planned:
             with set_time_now(stop + 1.0 * u.hr):
                 event_states = cmd_states.get_states(
                     start, stop, event_filter=filter_scs107_events
@@ -351,18 +360,33 @@ class SolarWind:
             event_states = cmd_states.get_states(start, stop)
         idxs = (self.ace_times >= start) & (self.ace_times < stop)
         t = self.ace_times[idxs]
-        states = cmd_states.interpolate_states(event_states, t)
+        if use_msids:
+            msids.interpolate(times=t.secs)
+        else:
+            states = cmd_states.interpolate_states(event_states, t)
         ace_p3 = np.nan_to_num(self.ace_table["p3"][idxs])
-        ace_p3[states["simpos"] < 0.0] = 0.0
-        ace_p3[(states["hetg"] == "INSR") | (states["letg"] == "INSR")] *= 0.2
+        if not no_atten:
+            if use_msids:
+                ace_p3[msids["3tscpos"].vals < 0.0] = 0.0
+                ace_p3[
+                    (msids["4ootgmtn"].vals == "INSE")
+                    & (msids["4ootgsel"].vals == "HETG")
+                ] *= 0.2
+                ace_p3[
+                    (msids["4ootgmtn"].vals == "INSE")
+                    & (msids["4ootgsel"].vals == "LETG")
+                ] *= 0.5
+            else:
+                ace_p3[states["simpos"] < 0.0] = 0.0
+                ace_p3[(states["hetg"] == "INSR") | (states["letg"] == "INSR")] *= 0.2
         fluence = np.trapz(ace_p3, x=t.secs) * 1.0e-9
         return fluence
 
-    def _plot_comms(self, ax):
+    def _plot_comms(self, dp):
         if self.comms:
             for i, comm in enumerate(self.comms):
                 label = "Comm" if i == 0 else None
-                ax.axvspan(
+                dp.add_vrect(
                     CxoTime(comm[0]).datetime,
                     CxoTime(comm[1]).datetime,
                     color="dodgerblue",
@@ -370,10 +394,10 @@ class SolarWind:
                     label=label,
                 )
 
-    def _plot_rzs(self, ax):
+    def _plot_rzs(self, dp):
         for i, radzone in enumerate(self.rad_zones):
             label = "Rad Zone" if i == 0 else None
-            ax.axvspan(
+            dp.add_vrect(
                 CxoTime(radzone.tstart).datetime,
                 CxoTime(radzone.tstop).datetime,
                 color="mediumpurple",
@@ -382,25 +406,25 @@ class SolarWind:
             )
 
     def plot_ace_e(self, plot=None):
-        dp = CustomDatePlot(
+        dp = DatePlot(
             self.ace_times,
             self.ace_table["de1"],
             label="DE1",
             plot=plot,
         )
-        CustomDatePlot(self.ace_times, self.ace_table["de4"], plot=dp, label="DE4")
+        DatePlot(self.ace_times, self.ace_table["de4"], plot=dp, label="DE4")
         de_all = np.concatenate([self.ace_table[f"de{i}"] for i in [1, 4]])
         dp.set_yscale("log")
         dp.set_ylabel(
             "ACE Electron Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
         )
         dp.set_ylim(0.4 * np.nanmin(de_all), 1.6 * np.nanmax(de_all))
-        self._plot_rzs(dp.ax)
-        self._plot_comms(dp.ax)
+        self._plot_rzs(dp)
+        self._plot_comms(dp)
         return dp
 
     def plot_ace_p3(self, plot=None):
-        dp = CustomDatePlot(
+        dp = DatePlot(
             self.ace_times, self.ace_table["p3"], plot=plot, color="C1", label="P3"
         )
         dp.set_yscale("log")
@@ -410,33 +434,31 @@ class SolarWind:
         dp.set_ylim(
             0.4 * np.nanmin(self.ace_table["p3"]), 1.6 * np.nanmax(self.ace_table["p3"])
         )
-        self._plot_rzs(dp.ax)
-        self._plot_comms(dp.ax)
+        self._plot_rzs(dp)
+        self._plot_comms(dp)
         return dp
 
     def plot_ace_p(self, plot=None):
-        dp = CustomDatePlot(self.ace_times, self.ace_table["p1"], label="P1", plot=plot)
-        CustomDatePlot(self.ace_times, self.ace_table["p3"], plot=dp, label="P3")
-        CustomDatePlot(self.ace_times, self.ace_table["p5"], plot=dp, label="P5")
-        CustomDatePlot(self.ace_times, self.ace_table["p7"], plot=dp, label="P7")
+        dp = DatePlot(self.ace_times, self.ace_table["p1"], label="P1", plot=plot)
+        DatePlot(self.ace_times, self.ace_table["p3"], plot=dp, label="P3")
+        DatePlot(self.ace_times, self.ace_table["p5"], plot=dp, label="P5")
+        DatePlot(self.ace_times, self.ace_table["p7"], plot=dp, label="P7")
         p_all = np.concatenate([self.ace_table[f"p{i}"] for i in [1, 3, 5, 7]])
         dp.set_yscale("log")
         dp.set_ylabel(
             "ACE Proton Flux\n(particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
         )
         dp.set_ylim(0.4 * np.nanmin(p_all), 1.6 * np.nanmax(p_all))
-        self._plot_rzs(dp.ax)
-        self._plot_comms(dp.ax)
+        self._plot_rzs(dp)
+        self._plot_comms(dp)
         return dp
 
     def plot_goes_r(self, plot=None):
-        dp = CustomDatePlot(
-            self.goes_r_times, self.goes_r_table["P1"], label="P1", plot=plot
-        )
+        dp = DatePlot(self.goes_r_times, self.goes_r_table["P1"], label="P1", plot=plot)
         mins = [np.nanmin(self.goes_r_table["P1"])]
         maxes = [np.nanmax(self.goes_r_table["P1"])]
         for pf in ["P3", "P5", "P7"]:
-            CustomDatePlot(
+            DatePlot(
                 self.goes_r_times, self.goes_r_table[pf], plot=dp, label=pf.upper()
             )
             mins.append(np.nanmin(self.goes_r_table[pf]))
@@ -451,31 +473,31 @@ class SolarWind:
             return None
         else:
             dp.set_ylim(max(1.0e-7, 0.4 * ymin), 1.6 * ymax)
-            self._plot_rzs(dp.ax)
-            self._plot_comms(dp.ax)
+            self._plot_rzs(dp)
+            self._plot_comms(dp)
             return dp
 
     def plot_index(self, plot=None):
         if "ace_soft_slope" not in self.ace_table.colnames:
             self.generate_slopes()
-        dp = CustomDatePlot(
+        dp = DatePlot(
             self.ace_times,
             self.ace_table["ace_soft_slope"],
             label="ACE P1-P5",
             plot=plot,
         )
-        CustomDatePlot(
+        DatePlot(
             self.ace_times, self.ace_table["ace_hard_slope"], plot=dp, label="ACE P3-P7"
         )
-        CustomDatePlot(
+        DatePlot(
             self.goes_r_times,
             self.goes_r_table["goes_soft_slope"],
             plot=dp,
             label="GOES P1-P3",
         )
         dp.set_ylabel("Spectral Index")
-        self._plot_rzs(dp.ax)
-        self._plot_comms(dp.ax)
+        self._plot_rzs(dp)
+        self._plot_comms(dp)
         dp.set_legend()
         return dp
 
@@ -490,53 +512,90 @@ class SolarWind:
             "lime",
         ]
         times = CxoTime(times)
-        fig, (ax1, ax2) = plt.subplots(figsize=(20, 10), ncols=2)
+        fig = make_subplots(
+            rows=1, cols=2, subplot_titles=("Proton Spectra", "ACE Proton Flux")
+        )
+        fig.update_layout(width=1400, height=700)
         for i, time in enumerate(times):
             idx = np.searchsorted(self.ace_times.secs, time.secs)
             row = self.ace_table[idx]
-            ax1.plot(
-                p_emid,
-                [row["p1"], row["p3"], row["p5"], row["p7"]],
-                "x-",
-                lw=2,
-                label=time.yday,
-                color=spectrum_colors[i],
-                markersize=10,
-                mew=3,
+            color = _mpl_color(spectrum_colors[i])
+            fig.add_trace(
+                go.Scatter(
+                    x=p_emid,
+                    y=to_native_endian([row["p1"], row["p3"], row["p5"], row["p7"]]),
+                    mode="lines+markers",
+                    line={"color": color, "width": 2},
+                    marker={
+                        "symbol": "x",
+                        "size": 10,
+                        "color": color,
+                        "line": {"width": 3},
+                    },
+                    name=time.yday,
+                ),
+                row=1,
+                col=1,
             )
-        ax1.legend(fontsize=16)
-        ax1.set_xlabel("E (keV)", fontsize=18)
-        ax1.set_ylabel(
-            "Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=18,
+        fig.update_xaxes(
+            title={"text": "E (keV)", "font": {"size": 18}},
+            type="log",
+            row=1,
+            col=1,
         )
-        ax1.set_xscale("log")
-        ax1.set_yscale("log")
-        ax1.tick_params(which="major", width=2, length=6, labelsize=18)
-        ax1.tick_params(which="minor", width=2, length=3)
-        for axis in ["top", "bottom", "left", "right"]:
-            ax1.spines[axis].set_linewidth(2)
-        plot = DummyDatePlot(fig, ax2, [], None, [])
-        dp = self._plot_protons(plot=plot)
+        fig.update_yaxes(
+            title={
+                "text": mathtext_to_html(
+                    "Differential Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
+                ),
+                "font": {"size": 18},
+            },
+            type="log",
+            row=1,
+            col=1,
+        )
+        # Twin x-axis on top of panel 1, relabeling energy bins as ACE
+        # proton channel names (P1/P3/P5/P7).
+        log_emid = np.log10(p_emid)
+        pad = 0.05 * (log_emid.max() - log_emid.min())
+        fig.update_layout(
+            xaxis3={
+                "overlaying": "x",
+                "side": "top",
+                "type": "log",
+                "range": [log_emid.min() - pad, log_emid.max() + pad],
+                "tickvals": list(p_emid),
+                "ticktext": ["P1", "P3", "P5", "P7"],
+                "showgrid": False,
+                "anchor": "y",
+            }
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=p_emid,
+                y=[None] * len(p_emid),
+                xaxis="x3",
+                yaxis="y",
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+        plot = DatePlot.attach(fig, row=1, col=2)
+        dp = self.plot_ace_p(plot=plot)
         for i, time in enumerate(times):
             dp.add_vline(time, color=spectrum_colors[i], ls="--", lw=5)
         dt = TimeDelta(1.0 * u.d)
         dp.set_xlim(CxoTime(times[0]) - 0.1 * dt, CxoTime(times[-1]) + 0.1 * dt)
-        ax3 = ax1.twiny()
-        ax3.set_xlim(*ax1.get_xlim())
-        ax3.set_xscale("log")
-        ax3.set_xticks(p_emid)
-        ax3.set_xticklabels(["P1", "P3", "P5", "P7"])
-        ax3.tick_params(which="major", width=2, length=6, labelsize=18)
+        fig.update_layout(font={"size": 18})
         return fig
 
     def plot_hrc(self, plot=None):
-        dp = CustomDatePlot(
+        dp = DatePlot(
             self.hrc_times, self.hrc_table["hrc_shield"], label="GOES proxy", plot=plot
         )
         h_all = self.hrc_table["hrc_shield"]
         if "2shldart" in self.hrc_table and np.nansum(self.hrc_table["2shldart"]) > 0.0:
-            CustomDatePlot(
+            DatePlot(
                 self.hrc_times,
                 self.hrc_table["2shldart"],
                 plot=dp,
@@ -547,8 +606,8 @@ class SolarWind:
         dp.set_ylabel("HRC Proxy (counts)")
         dp.set_ylim(max(7, 0.4 * np.nanmin(h_all)), max(1.6 * np.nanmax(h_all), 300))
         dp.add_hline(235.0, ls="--", lw=2, color="C3")
-        self._plot_rzs(dp.ax)
-        self._plot_comms(dp.ax)
+        self._plot_rzs(dp)
+        self._plot_comms(dp)
         return dp
 
     def plot_txings(self, plot=None, ms=5):
@@ -574,7 +633,7 @@ class SolarWind:
             first = False
         for k in self.rates:
             self.rates[k] = np.concatenate(self.rates[k])
-        plot = CustomDatePlot(
+        plot = DatePlot(
             self.rates["times"],
             self.rates["fi_rate"] * 0.01,
             fmt=".",
@@ -584,7 +643,7 @@ class SolarWind:
             lw=0,
             plot=plot,
         )
-        CustomDatePlot(
+        DatePlot(
             self.rates["times"],
             self.rates["bi_rate"] * 0.01,
             fmt=".",
@@ -594,14 +653,14 @@ class SolarWind:
             lw=0,
             plot=plot,
         )
-        CustomDatePlot(
+        DatePlot(
             self.rates["times"],
             self.rates["fi_rate_limit"] * 0.01,
             label="FI Rate",
             color="C0",
             plot=plot,
         )
-        CustomDatePlot(
+        DatePlot(
             self.rates["times"],
             self.rates["bi_rate_limit"] * 0.01,
             label="BI Rate",
@@ -611,33 +670,50 @@ class SolarWind:
         plot.set_yscale("log")
         plot.set_ylim(0.1, 100)
         plot.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
-        plot.ax.tick_params(which="major", width=2, length=6)
-        plot.ax.tick_params(which="minor", width=2, length=3)
-        fontProperties = font_manager.FontProperties(size=18)
-        for label in plot.ax.get_xticklabels():
-            label.set_fontproperties(fontProperties)
-        for label in plot.ax.get_yticklabels():
-            label.set_fontproperties(fontProperties)
-        for axis in ["top", "bottom", "left", "right"]:
-            plot.ax.spines[axis].set_linewidth(2)
+        plot.fig.update_layout(font={"size": 18})
+        plot.fig.update_xaxes(linewidth=2, row=plot._row, col=plot._col)
+        plot.fig.update_yaxes(linewidth=2, row=plot._row, col=plot._col)
         plot.set_legend(fontsize=15)
-        self._plot_rzs(plot.ax)
-        self._plot_comms(plot.ax)
+        self._plot_rzs(plot)
+        self._plot_comms(plot)
         return plot
 
     def scatter_plots(self):
-        fig, (ax1, ax2) = plt.subplots(figsize=(20, 9.5), ncols=2)
+        fig = make_subplots(
+            rows=1,
+            cols=2,
+            subplot_titles=("GOES HRC Proxy vs. ACE P3", "FI Txings vs. Goes Proxy"),
+        )
+        fig.update_layout(width=1400, height=700)
         hrc_shield = np.interp(
             self.ace_times.secs, self.hrc_times.secs, self.hrc_table["hrc_shield"]
         )
-        ax1.scatter(self.ace_table["p3"], hrc_shield)
-        ax1.set_title("GOES HRC Proxy vs. ACE P3", fontsize=18)
-        ax1.set_xlabel(
-            "ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)",
-            fontsize=18,
+        fig.add_trace(
+            go.Scatter(
+                x=to_native_endian(self.ace_table["p3"]),
+                y=to_native_endian(hrc_shield),
+                mode="markers",
+            ),
+            row=1,
+            col=1,
         )
-        ax1.set_xscale("log")
-        ax1.set_yscale("log")
+        fig.update_xaxes(
+            title={
+                "text": mathtext_to_html(
+                    "ACE P3 Flux (particles cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)"
+                ),
+                "font": {"size": 18},
+            },
+            type="log",
+            row=1,
+            col=1,
+        )
+        fig.update_yaxes(
+            title={"text": "GOES Proxy (counts)", "font": {"size": 18}},
+            type="log",
+            row=1,
+            col=1,
+        )
         fi_rate = np.empty(self.ace_times.secs.shape)
         fi_rate[:] = np.nan
         for o in self.obsids:
@@ -647,17 +723,29 @@ class SolarWind:
             t = self.txings_data[this_o]
             idxs = np.searchsorted(self.ace_times.secs, t["time"]) - 1
             fi_rate[idxs] = t["fi_rate"] * 0.01
-        ax2.scatter(self.hrc_table["hrc_shield"], fi_rate)
-        ax2.set_title("FI Txings vs. Goes Proxy", fontsize=18)
-        ax2.set_xlabel("GOES Proxy (counts)", fontsize=18)
-        ax2.set_xscale("log")
-        if np.all(np.nan_to_num(fi_rate) > 0):
-            ax2.set_yscale("log")
-        for ax in [ax1, ax2]:
-            ax.tick_params(which="major", width=2, length=6, labelsize=18)
-            ax.tick_params(which="minor", width=2, length=3, labelsize=18)
-            for axis in ["top", "bottom", "left", "right"]:
-                ax.spines[axis].set_linewidth(2)
-        ax1.set_ylabel("GOES Proxy (counts)", fontsize=18)
-        ax2.set_ylabel("ACIS Threshold Crossing Rate (cts/row/s)", fontsize=18)
+        fig.add_trace(
+            go.Scatter(
+                x=to_native_endian(self.hrc_table["hrc_shield"]),
+                y=to_native_endian(fi_rate),
+                mode="markers",
+            ),
+            row=1,
+            col=2,
+        )
+        fig.update_xaxes(
+            title={"text": "GOES Proxy (counts)", "font": {"size": 18}},
+            type="log",
+            row=1,
+            col=2,
+        )
+        fig.update_yaxes(
+            title={
+                "text": "ACIS Threshold Crossing Rate (cts/row/s)",
+                "font": {"size": 18},
+            },
+            type="log" if np.all(np.nan_to_num(fi_rate) > 0) else "linear",
+            row=1,
+            col=2,
+        )
+        fig.update_layout(font={"size": 18})
         return fig, fi_rate

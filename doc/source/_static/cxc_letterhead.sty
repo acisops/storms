@@ -1,0 +1,149 @@
+\ifx\if@compatibility\undefined\else
+  \NeedsTeXFormat{LaTeX2e}
+  \ProvidesPackage{cxc_letterhead}[2000/07/21 v1.1 cxc_letterhead package]
+\fi
+\RequirePackage{graphicx}
+\RequirePackage{keyval}
+
+% define addresses here.  The macro names must have the form
+%    \CXCLH@addr@XXXX
+% where XXXX is what the user sets the \textsf{addr} option to.
+\def\CXCLH@addr@none{}
+\def\CXCLH@addr@cfa{60 Garden St., Cambridge Massachusetts 02138 USA}
+
+\def\CXCLH@err#1{\PackageError{asc_letterhead}{#1}{}}
+
+%    \begin{macrocode}
+\def\CXCLH@resetaddr{\def\CXCLH@address{}}
+\def\CXCLH@setaddr#1{%
+   \expandafter\let\expandafter\@tempa\csname CXCLH@addr@#1\endcsname%
+   \ifx\relax\@tempa%
+      \CXCLH@err{unknown CXC address #1}%
+   \else%
+      \edef\CXCLH@address{\@tempa}
+   \fi%
+}
+%    \end{macrocode}
+
+
+% \begin{key}{CXCLH}{addr}
+% \begin{key}{CXCLH}{noaddr}
+%    \begin{macrocode}
+\define@key{CXCLH}{addr}{\CXCLH@setaddr{#1}}
+%    \end{macrocode}
+% \end{key}\end{key}
+
+% The original of the following code is from the \textsf{geometry} package.
+% \begin{macro}{\CXCLH@setkey}
+% \cs{ExecuteOptions} is replaced with \cs{CXCLH@setkey} to make it
+% possible to deal with `key=value' as its argument.
+%    \begin{macrocode}
+\def\CXCLH@setkey{\setkeys{CXCLH}}
+\let\CXCLH@origExecuteOptions\ExecuteOptions
+\let\ExecuteOptions\CXCLH@setkey
+%    \end{macrocode}
+% \end{macro}
+% \texttt{reset} option is executed.
+%    \begin{macrocode}
+\ExecuteOptions{addr=none}
+%    \end{macrocode}
+% The original definition for \cs{ExecuteOptions} macro is restored.
+%    \begin{macrocode}
+\let\ExecuteOptions\CXCLH@origExecuteOptions
+%    \end{macrocode}
+%
+% \begin{macro}{\ProcessOptionsWithKV}
+% This macros can process package options using `key=value' scheme.
+% The code was borrowed from the \textsf{hyperref} package written by
+% Sebastian Rahtz.
+%    \begin{macrocode}
+\def\ProcessOptionsWithKV#1{%
+  \let\@tempa\@empty
+  \@for\CurrentOption:=\@classoptionslist\do{%
+    \@ifundefined{KV@#1@\CurrentOption}%
+    {}{\edef\@tempa{\@tempa,\CurrentOption,}}}%
+  \edef\@tempa{%
+    \noexpand\setkeys{#1}{\@tempa\@ptionlist{\@currname.\@currext}}}%
+  \@tempa
+  \AtEndOfPackage{\let\@unprocessedoptions\relax}}
+%    \end{macrocode}
+% \end{macro}
+% The optional arguments to \cs{usepackage} and \cs{documentclass} macros
+% are processed here.
+%    \begin{macrocode}
+\ProcessOptionsWithKV{CXCLH}
+%    \end{macrocode}
+
+\newcommand{\CXCletterhead}[1][-12345pt]{{%
+
+  \newlength{\l@tterheadwidth}
+
+  % if no width was specified, make it 80% of the paperwidth
+  \ifdim #1 = -12345pt
+    \setlength{\l@tterheadwidth}{\paperwidth}
+    \addtolength{\l@tterheadwidth}{-\textwidth}
+    \setlength{\l@tterheadwidth}{0.2\l@tterheadwidth}
+    \addtolength{\l@tterheadwidth}{\textwidth}
+  \else
+    \setlength{\l@tterheadwidth}{#1}
+  \fi
+
+  % just so the code isn't flooded with \noindents
+  \setlength{\parindent}{0pt}
+
+  % determine the height and width of the logo.  This is used for
+  % both horizontal spacing, and to move the letterhead up on the page.
+  \newlength{\l@gowidth}
+  \newlength{\l@goheight}
+  \newsavebox{\l@go}
+  \sbox{\l@go}{\includegraphics[height=1in]{cxc_logo.eps}}
+  \settowidth{\l@gowidth}{\usebox{\l@go}}
+  \settoheight{\l@goheight}{\usebox{\l@go}}
+
+  % the space allocated to the text in the letterhead.
+  \newlength{\w@ordwidth}
+  \setlength{\w@ordwidth}{\l@tterheadwidth}
+  \addtolength{\w@ordwidth}{-\l@gowidth}
+
+  % the amount by which to shift the letter head horizontally so that
+  % it is in the center of the page
+  \newlength{\l@goindent}
+  \setlength{\l@goindent}{\textwidth}
+  \addtolength{\l@goindent}{-\l@tterheadwidth}
+
+  % move up to get the letterhead fairly high on the page.  This assumes
+  % that the logo is taller than the text
+  \vspace*{-\l@goheight}
+
+  % center the logo
+  \hspace{0.5\l@goindent}%
+  % use rlap to make the letterhead box zero width and avoid nasty
+  % messages
+  \rlap{%
+    % the main box containing the text and the logo
+    \parbox{\l@tterheadwidth}{%
+      % this box contains the text and the rule
+      \parbox[b]{\w@ordwidth}{%
+        % slide the text over just a bit so that the rule sticks out
+        % a bit.  decrement \w@ordwidth to account for the indentation
+	\hspace{3pt}%
+	\addtolength{\w@ordwidth}{-3pt}%
+        % here's the text
+	\parbox[b]{\w@ordwidth}{%
+	    \normalfont\fontseries{b}\fontsize{25}{25pt}\selectfont CHANDRA \\
+	    \normalfont\fontseries{b}\fontsize{17}{15}\selectfont X-ray Center
+	    \normalfont\sffamily\fontsize{12}{15}\selectfont
+		\quad \CXCLH@address
+	}
+	% the rule goes under the text. increment \w@ordwidth back to its
+	% original value and draw a rule of that length
+	\addtolength{\w@ordwidth}{3pt}%
+	\baselineskip=5pt
+	\rule{\w@ordwidth}{1pt}
+      }%
+      % move the logo to the other side of the box
+      \hfill%
+      \usebox{\l@go}
+    }%
+  }%
+}}%
