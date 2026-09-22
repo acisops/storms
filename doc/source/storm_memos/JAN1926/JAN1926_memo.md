@@ -21,7 +21,17 @@
   <tr><td style="padding-right: 1em; font-weight: bold; vertical-align: top; font-size: 0.85em;">Version:</td><td style="font-family: monospace; font-size: 0.85em;">1.0</td></tr>
 </table>
 <hr style="border: none; border-top: 1px solid black; margin: 0 0 1.5em 0;">
-<p style="text-align: right; margin: -0.5em 0 1em 0; font-size: 0.9em;"><a href="../../JAN1926_memo.pdf">Download PDF version</a></p>
+<p style="text-align: right; margin: -0.5em 0 1em 0;">
+  <a href="../../JAN1926_memo.pdf" style="display: inline-flex; align-items: center; gap: 0.4em; font-size: 1.3em; font-weight: bold; text-decoration: none;">
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M6,2 L14,2 L18,6 L18,22 L6,22 Z" fill="#f5f5f5" stroke="#666666" stroke-width="1"/>
+      <path d="M14,2 L14,6 L18,6" fill="none" stroke="#666666" stroke-width="1"/>
+      <rect x="4" y="13" width="14" height="6.5" rx="1" fill="#c62828"/>
+      <text x="11" y="18" font-size="5.5" font-family="Arial, sans-serif" font-weight="bold" fill="white" text-anchor="middle">PDF</text>
+    </svg>
+    Download PDF version
+  </a>
+</p>
 ```
 
 ````{only} latex
