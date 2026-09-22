@@ -1,5 +1,7 @@
 import re
+import shutil
 from datetime import date
+from pathlib import Path
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -90,8 +92,29 @@ def _substitute_tokens(app, _docname, source):
     source[0] = text
 
 
+# html_extra_path (below) always copies an entry's *contents* into the
+# build root, dropping the entry's own leading path component - it has no
+# way to preserve a nested relative path like "storm_memos/older_memos/"
+# for a directory that lives right alongside other real doc sources
+# (storm_memos/index.rst, storm_memos/JAN1926/). So instead of
+# html_extra_path, older_memos/*.pdf is copied here, once the rest of the
+# HTML build is done, straight from source to the matching path under the
+# output directory.
+def _copy_older_memos(app, exc):
+    if exc is not None or app.builder.name != "html":
+        return
+    src_dir = Path(app.srcdir) / "storm_memos" / "older_memos"
+    if not src_dir.is_dir():
+        return
+    out_dir = Path(app.outdir) / "storm_memos" / "older_memos"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for pdf in src_dir.glob("*.pdf"):
+        shutil.copy2(pdf, out_dir / pdf.name)
+
+
 def setup(app):
     app.connect("source-read", _substitute_tokens)
+    app.connect("build-finished", _copy_older_memos)
 
 
 # NOTE: root_doc is left at its default ("index") here - this conf.py now
@@ -125,6 +148,10 @@ exclude_patterns = ["_build", "_sphinx_build", "old", "**/_build"]
 # every html build, so `make html` alone doesn't require a LaTeX
 # toolchain. Run `make latexpdf` first (or after editing the memo/plots)
 # to refresh it before `make html`.
+# storm_memos/older_memos/*.pdf is handled separately, by the
+# build-finished hook (_copy_older_memos, above) rather than listed here -
+# html_extra_path can't preserve that nested relative path (see the hook's
+# comment for why).
 html_extra_path = [
     "_static/plotly.min.js",
     "_images/cxc_logo.png",
