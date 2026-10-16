@@ -1,3 +1,5 @@
+import getpass
+
 from calendar import isleap
 from collections import defaultdict
 from datetime import datetime
@@ -343,6 +345,8 @@ class SolarWind:
     def get_ace_p3_fluence(
         self, start, stop, planned=True, no_atten=False, use_msids=False
     ):
+        if getpass.getuser() == "acisdude":
+            raise RuntimeError("Run this as yourself, not acisdude!")
         start = CxoTime(start)
         stop = CxoTime(stop)
         if use_msids:
