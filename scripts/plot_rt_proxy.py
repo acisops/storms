@@ -9,6 +9,7 @@ from astropy.time import Time
 from cxotime import CxoTime
 from kadi.commands.states import get_states
 from kadi.events import rad_zones
+from ska_numpy import interpolate
 
 from storms import SolarWind
 from storms.txings_proxy.realtime import get_realtime_goes
@@ -53,13 +54,23 @@ model_idxs = times >= tstop - args.days * u.day
 model_times = times.datetime[model_idxs]
 fi_rate_predict = t_proxy["fi_rate_predict"][model_idxs]
 bi_rate_predict = t_proxy["bi_rate_predict"][model_idxs]
-fi_rate_limit = 320.0 * np.ones_like(times.cxcsec)[model_idxs]
-bi_rate_limit = 20.0 * np.ones_like(times.cxcsec)[model_idxs]
 
 data_idxs = sw.txings_times >= tstop - args.days * u.day
 data_times = sw.txings_times.datetime[data_idxs]
 fi_rate = sw.txings_data["fi_rate"][data_idxs]
 bi_rate = sw.txings_data["bi_rate"][data_idxs]
+fi_rate_limit = interpolate(
+    sw.txings_data["fi_rate_limit"][data_idxs],
+    data_times,
+    model_times,
+    method="nearest",
+)
+bi_rate_limit = interpolate(
+    sw.txings_data["bi_rate_limit"][data_idxs],
+    data_times,
+    model_times,
+    method="nearest",
+)
 
 ax1.plot(model_times, fi_rate_predict, lw=3, label="FI Prediction", color="C0")
 ax1.plot(model_times, fi_rate_limit, label="FI Limit", lw=2, color="C0")
