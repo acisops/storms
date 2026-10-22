@@ -49,6 +49,8 @@ print(tstart.yday, tstop.yday)
 sw = SolarWind(tstart.yday, tstop.yday, get_txings=True, get_ace=False)
 
 fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 13), constrained_layout=True)
+fig_fi, ax_fi = plt.subplots(figsize=(12, 6.5), constrained_layout=True)
+fig_bi, ax_bi = plt.subplots(figsize=(12, 6.5), constrained_layout=True)
 
 model_idxs = times >= tstop - args.days * u.day
 model_times = times.datetime[model_idxs]
@@ -72,27 +74,63 @@ bi_rate_limit = interpolate(
     method="nearest",
 )
 
-ax1.plot(model_times, fi_rate_predict, lw=3, label="FI Prediction", color="C0")
-ax1.plot(model_times, fi_rate_limit, label="FI Limit", lw=2, color="C0")
-ax1.plot(data_times, fi_rate, ".", ms=6, label="FI Data", color="C1")
 
-ax2.plot(model_times, bi_rate_predict, lw=3, label="BI Prediction", color="C2")
-ax2.plot(model_times, bi_rate_limit, label="BI Limit", lw=2, color="C2")
-ax2.plot(data_times, bi_rate, ".", ms=6, label="BI Data", color="C3")
+def plot_rate(ax, predict, limit, data, *, label, predict_color, data_color):
+    ax.plot(
+        model_times, predict, lw=3, label=f"{label} Prediction", color=predict_color
+    )
+    ax.plot(model_times, limit, label=f"{label} Limit", lw=2, color=predict_color)
+    ax.plot(data_times, data, ".", ms=6, label=f"{label} Data", color=data_color)
 
-for ax in [ax1, ax2]:
+
+for ax in [ax1, ax_fi]:
+    plot_rate(
+        ax,
+        fi_rate_predict,
+        fi_rate_limit,
+        fi_rate,
+        label="FI",
+        predict_color="C0",
+        data_color="C1",
+    )
+
+for ax in [ax2, ax_bi]:
+    plot_rate(
+        ax,
+        bi_rate_predict,
+        bi_rate_limit,
+        bi_rate,
+        label="BI",
+        predict_color="C2",
+        data_color="C3",
+    )
+
+fi_axes = [ax1, ax_fi]
+bi_axes = [ax2, ax_bi]
+all_axes = fi_axes + bi_axes
+
+for ax in all_axes:
     ax.grid()
     ax.set_xlim(model_times[0], times[-1].datetime)
     ax.set_xlabel("Date")
     ax.legend(fontsize=16, loc="upper left")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%j:%H"))
 
-fig.autofmt_xdate()
+for f in [fig, fig_fi, fig_bi]:
+    f.autofmt_xdate()
 
-ax1.set_ylim(80, max(420.0, fi_rate.max() * 1.1, fi_rate_predict.max() * 1.1))
-ax2.set_ylim(5, max(35.0, bi_rate.max() * 1.1, bi_rate_predict.max() * 1.1))
+fi_ylim = (80, max(420.0, fi_rate.max() * 1.1, fi_rate_predict.max() * 1.1))
+bi_ylim = (5, max(35.0, bi_rate.max() * 1.1, bi_rate_predict.max() * 1.1))
 
-fig.supylabel("ACIS Threshold Crossing Rate (cts/sec/100 rows)")
+for ax in fi_axes:
+    ax.set_ylim(*fi_ylim)
+for ax in bi_axes:
+    ax.set_ylim(*bi_ylim)
+
+ylabel = "ACIS Threshold Crossing Rate (cts/sec/100 rows)"
+fig.supylabel(ylabel)
+ax_fi.set_ylabel(ylabel)
+ax_bi.set_ylabel(ylabel)
 
 states = get_states(
     start=times.yday[model_idxs][0], stop=times[-1].yday, merge_identical=True
@@ -103,10 +141,22 @@ tstart = CxoTime(states["tstart"][oidxs])
 
 for o, t in zip(oo, tstart, strict=True):
     if t >= model_times[0] and o <= 39000:
-        for ax, ypos in zip([ax1, ax2], [100, 8], strict=True):
+        for ax in fi_axes:
             ax.text(
                 t.datetime,
-                ypos,
+                100,
+                str(o),
+                color="C3",
+                rotation=90,
+                ha="center",
+                va="bottom",
+                fontsize=14,
+                zorder=-100,
+            )
+        for ax in bi_axes:
+            ax.text(
+                t.datetime,
+                8,
                 str(o),
                 color="C3",
                 rotation=90,
@@ -118,7 +168,7 @@ for o, t in zip(oo, tstart, strict=True):
 for rz in rad_zones.filter(
     start=times.yday[model_idxs][0], stop=(times[-1] + 2 * u.day).yday
 ):
-    for ax in [ax1, ax2]:
+    for ax in all_axes:
         ax.axvspan(
             CxoTime(rz.tstart).datetime,
             CxoTime(rz.tstop).datetime,
@@ -127,3 +177,5 @@ for rz in rad_zones.filter(
         )
 
 fig.savefig(out_path / "txings_proxy.png", bbox_inches="tight")
+fig_fi.savefig(out_path / "txings_proxy_fi.png", bbox_inches="tight")
+fig_bi.savefig(out_path / "txings_proxy_bi.png", bbox_inches="tight")
